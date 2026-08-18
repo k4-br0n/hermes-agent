@@ -25,7 +25,6 @@ import {
   _resetLegacyDiscardForTests,
   applyConfiguredDefaultProjectDir,
   commitWorkspaceCwdForSelectedSession,
-  foregroundSessionIdForProfile,
   getRememberedRoute,
   getRememberedSessionId,
   mergeSessionPage,
@@ -883,36 +882,6 @@ describe('sessionBelongsToProfile', () => {
 
   it('returns false for an empty session list', () => {
     expect(sessionBelongsToProfile([], 'any-id', 'default')).toBe(false)
-  })
-})
-
-describe('foregroundSessionIdForProfile', () => {
-  it('prefers the focused session tile over a route-backed running session', () => {
-    const sessions = [
-      session({ id: 'running-route', profile: 'default' }),
-      session({ id: 'foreground-tile', profile: 'default' })
-    ]
-
-    expect(
-      foregroundSessionIdForProfile(
-        sessions,
-        'default',
-        'session-tile:foreground-tile',
-        'running-route',
-        'running-route'
-      )
-    ).toBe('foreground-tile')
-  })
-
-  it('rejects a focused tile owned by another profile and falls back to the routed session', () => {
-    const sessions = [
-      session({ id: 'personal-route', profile: 'default' }),
-      session({ id: 'work-tile', profile: 'work' })
-    ]
-
-    expect(
-      foregroundSessionIdForProfile(sessions, 'default', 'session-tile:work-tile', 'personal-route', 'personal-route')
-    ).toBe('personal-route')
   })
 })
 

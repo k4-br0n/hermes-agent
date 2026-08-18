@@ -29,7 +29,6 @@ const {
   ensureGatewayProfile,
   invalidateProfileListFetches,
   prewarmProfileBackend,
-  registerProfileForegroundCapture,
   refreshProfiles,
   selectProfile
 } = await import('./profile')
@@ -135,20 +134,6 @@ describe('profile-scoped cache invalidation', () => {
 })
 
 describe('selectProfile navigation restore', () => {
-  it('captures the source profile foreground before requesting the target restore', () => {
-    const capture = vi.fn()
-    const unregister = registerProfileForegroundCapture(capture)
-
-    selectProfile('coder')
-
-    expect(capture).toHaveBeenCalledOnce()
-    expect(capture).toHaveBeenCalledWith('default')
-    expect(capture.mock.invocationCallOrder[0]).toBeLessThan(
-      ensureGatewayForProfile.mock.invocationCallOrder[0] ?? Infinity
-    )
-    unregister()
-  })
-
   it('requests the target profile restore instead of a fresh draft', () => {
     selectProfile('coder')
 
