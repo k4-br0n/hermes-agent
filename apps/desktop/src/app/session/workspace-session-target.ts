@@ -12,9 +12,9 @@ interface WorkspaceSessionOptions {
   activeSessionIdRef: MutableRefObject<string | null>
   followActiveSessionCwd?: (cwd: string) => void | Promise<void>
   onExplicitWorkspace?: (cwd: string) => void
-  path: null | string
+  path?: null | string
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
-  startFreshSessionDraft: (options?: { workspaceTarget: string }) => void
+  startFreshSessionDraft: (options?: { workspaceTarget: null | string }) => void
 }
 
 export function startWorkspaceSession({
@@ -25,6 +25,14 @@ export function startWorkspaceSession({
   requestGateway,
   startFreshSessionDraft
 }: WorkspaceSessionOptions): void {
+  // Home's null path is an explicit detached target, not a missing target. It
+  // must win over any previous project scope or configured workspace fallback.
+  if (path === null) {
+    startFreshSessionDraft({ workspaceTarget: null })
+
+    return
+  }
+
   // A worktree lane carries its own path; a project trunk can be path-less, so
   // fall back to the active project's root for that existing controller path.
   const explicitTarget = path?.trim()
