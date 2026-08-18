@@ -91,7 +91,7 @@ function deferred<T>() {
 
 type HarnessHandle = Pick<
   ReturnType<typeof useSessionActions>,
-  'createBackendSessionForSend' | 'selectSidebarItem' | 'startFreshSessionDraft'
+  'createBackendSessionForSend' | 'openNewSessionTile' | 'selectSidebarItem' | 'startFreshSessionDraft'
 >
 
 function storedSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -470,6 +470,58 @@ describe('startFreshSessionDraft', () => {
 
     expect(revealTreePane).toHaveBeenCalledWith('workspace')
     expect($terminalTakeover.get()).toBe(true)
+  })
+})
+
+describe('openNewSessionTile workspace target', () => {
+  afterEach(() => {
+    cleanup()
+    $projectScope.set(ALL_PROJECTS)
+    $projectTree.set([])
+    $sessionTiles.set([])
+    setCurrentCwd('')
+    setSessions([])
+    vi.restoreAllMocks()
+  })
+
+  it('keeps an explicit detached tile out of the previous project', async () => {
+    $projectScope.set('p_previous')
+    $projectTree.set([
+      {
+        id: 'p_previous',
+        label: 'Previous project',
+        path: '/previous-workspace',
+        previewSessions: [],
+        repos: [],
+        sessionCount: 0
+      }
+    ])
+    setCurrentCwd('/previous-workspace')
+
+    let createParams: Record<string, unknown> | undefined
+    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'session.create') {
+        createParams = params
+
+        return {
+          info: {},
+          session_id: 'runtime-home',
+          stored_session_id: 'stored-home'
+        } as never
+      }
+
+      return {} as never
+    })
+    let handle: HarnessHandle | null = null
+
+    render(<Harness onReady={value => (handle = value)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(handle).not.toBeNull())
+
+    await act(async () => {
+      await handle!.openNewSessionTile('center', { cwd: null, listed: false })
+    })
+
+    expect(createParams).not.toHaveProperty('cwd')
   })
 })
 
