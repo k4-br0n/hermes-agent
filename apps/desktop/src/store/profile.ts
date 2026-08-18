@@ -208,18 +208,34 @@ export function requestFreshSession(): void {
 // latest target without replaying an older restore.
 export interface ProfileNavigationRequest {
   profile: string
+  ready: boolean
   sequence: number
 }
 
 export const $profileNavigationRequest = atom<ProfileNavigationRequest | null>(null)
 
-export function requestProfileNavigationRestore(profile: string): void {
+export function requestProfileNavigationRestore(profile: string): number {
   const current = $profileNavigationRequest.get()
+  const sequence = (current?.sequence ?? 0) + 1
 
   $profileNavigationRequest.set({
     profile: normalizeProfileKey(profile),
-    sequence: (current?.sequence ?? 0) + 1
+    ready: false,
+    sequence
   })
+
+  return sequence
+}
+
+function markProfileNavigationReady(profile: string, sequence: number): void {
+  const current = $profileNavigationRequest.get()
+
+  // A slower earlier switch must never arm restoration after a newer target has
+  // replaced it. Readiness means BOTH the gateway and the connection descriptor
+  // (which owns the localStorage namespace) have settled for this exact request.
+  if (current?.profile === normalizeProfileKey(profile) && current.sequence === sequence) {
+    $profileNavigationRequest.set({ ...current, ready: true })
+  }
 }
 
 // The profile store owns the switch click but intentionally knows nothing about
@@ -506,11 +522,12 @@ export function selectProfile(name: string): void {
   $showAllProfiles.set(false)
   $newChatProfile.set(target)
 
-  if (switching) {
-    requestProfileNavigationRestore(target)
-  }
+  const restoreSequence = switching ? requestProfileNavigationRestore(target) : null
+  const swap = ensureGatewayProfile(target)
 
-  void ensureGatewayProfile(target)
+  if (restoreSequence !== null) {
+    void swap.then(() => markProfileNavigationReady(target, restoreSequence))
+  }
 }
 
 // Start a fresh session in `name` WITHOUT collapsing the "All profiles" browse
