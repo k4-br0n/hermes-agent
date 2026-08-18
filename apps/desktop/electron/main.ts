@@ -7397,13 +7397,13 @@ async function freshGatewayWsUrl(profile) {
 
     rememberRemoteWsHeaders(wsUrl, connection.headers)
 
-    return wsUrl
+    return registryGatewayWsUrl(connection, wsUrl)
   }
 
   // Local/token: the cached wsUrl already carries the (long-lived) token.
   rememberRemoteWsHeaders(connection.wsUrl, connection.headers)
 
-  return connection.wsUrl
+  return registryGatewayWsUrl(connection, connection.wsUrl)
 }
 
 // --- Hermes Cloud discovery + silent per-agent sign-in (cloud-auto-discovery
