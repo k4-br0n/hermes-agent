@@ -29,6 +29,7 @@ import {
   getRememberedRoute,
   getRememberedSessionId,
   mergeSessionPage,
+  profileForegroundNavigation,
   rememberedSessionProfile,
   resolveComposerSessionKey,
   sessionBelongsToProfile,
@@ -913,6 +914,44 @@ describe('foregroundSessionIdForProfile', () => {
     expect(
       foregroundSessionIdForProfile(sessions, 'default', 'session-tile:work-tile', 'personal-route', 'personal-route')
     ).toBe('personal-route')
+  })
+})
+
+describe('profileForegroundNavigation', () => {
+  it('keeps an explicit blank chat ahead of stale split-tile focus', () => {
+    const sessions = [session({ id: 'stale-tile', profile: 'default' })]
+
+    expect(
+      profileForegroundNavigation(sessions, 'default', 'session-tile:stale-tile', '/', null, null, false, true)
+    ).toEqual({ clearSession: true, kind: 'route', route: '/' })
+  })
+
+  it('keeps a non-session page ahead of stale split-tile focus', () => {
+    const sessions = [session({ id: 'stale-tile', profile: 'default' })]
+
+    expect(
+      profileForegroundNavigation(sessions, 'default', 'session-tile:stale-tile', '/skills', null, null, false, false)
+    ).toEqual({ clearSession: false, kind: 'route', route: '/skills' })
+  })
+
+  it('uses the focused tile when the workspace route is session-shaped', () => {
+    const sessions = [
+      session({ id: 'running-route', profile: 'default' }),
+      session({ id: 'foreground-tile', profile: 'default' })
+    ]
+
+    expect(
+      profileForegroundNavigation(
+        sessions,
+        'default',
+        'session-tile:foreground-tile',
+        '/running-route',
+        'running-route',
+        'running-route',
+        false,
+        false
+      )
+    ).toEqual({ kind: 'session', sessionId: 'foreground-tile' })
   })
 })
 
