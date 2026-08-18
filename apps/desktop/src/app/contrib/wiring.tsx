@@ -915,14 +915,17 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // The tab-strip "+" and ⌘T share one action: open a new session as its own
-  // tab (stacked into the workspace zone) WITHOUT polluting the session list.
+  // The tab-strip "+" and ⌘T share one GLOBAL action: open a detached Home
+  // session as its own tab, regardless of the currently entered Project. Named
+  // Projects/worktrees already carry their own scoped "+" controls; inheriting
+  // that scope here makes the global control duplicate them and causes accidental
+  // project attachment.
   // Created `listed: false`, so each new tab's in-memory session stays out of
   // the sidebar until its first message persists a turn and a refresh surfaces
   // it — Cursor-style. Every click opens a fresh "New session" tab (multiple
   // empty tabs are fine since none touch the session list).
   const openNewSessionTab = useCallback(() => {
-    void openNewSessionTile('center', { listed: false })
+    void openNewSessionTile('center', { cwd: null, listed: false })
   }, [openNewSessionTile])
 
   // Archive the selected session (rebindable `session.archive` hotkey).
