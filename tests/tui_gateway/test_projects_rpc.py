@@ -292,6 +292,37 @@ def test_discover_repos_is_registered_long_handler():
     assert "projects.record_repos" in server._LONG_HANDLERS
 
 
+def test_project_tree_uses_context_scoped_session_db(tmp_path):
+    """A profile-scoped WebSocket must not mix launch-profile sessions into its tree."""
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from hermes_state import SessionDB
+
+    launch_repo = tmp_path / "launch-repo"
+    launch_repo.mkdir()
+    (launch_repo / ".git").mkdir()
+    server._get_db().create_session("launch-project-tree-session", "desktop", cwd=str(launch_repo))
+
+    profile_home = tmp_path / "profile-home"
+    profile_home.mkdir()
+    profile_repo = tmp_path / "profile-repo"
+    profile_repo.mkdir()
+    (profile_repo / ".git").mkdir()
+    profile_db = SessionDB(db_path=profile_home / "state.db")
+    try:
+        profile_db.create_session("profile-project-tree-session", "desktop", cwd=str(profile_repo))
+    finally:
+        profile_db.close()
+
+    token = set_hermes_home_override(profile_home)
+    try:
+        labels = {project["label"] for project in _call("projects.tree")["projects"]}
+    finally:
+        reset_hermes_home_override(token)
+
+    assert profile_repo.name in labels
+    assert launch_repo.name not in labels
+
+
 def test_record_repos_persists_and_shows_zero_session_repo(tmp_path):
     repo = tmp_path / "fresh-repo"
     repo.mkdir()
