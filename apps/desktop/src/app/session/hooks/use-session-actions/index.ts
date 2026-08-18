@@ -572,8 +572,10 @@ export function useSessionActions({
       try {
         // Fresh tile → the caller's workspace when one was named (the sidebar
         // "+" on a project/worktree lane), else the resolved new-session cwd
-        // (project scope → configured default).
-        const params = await desktopSessionCreateParams((options?.cwd || resolveNewSessionCwd()).trim())
+        // (project scope → configured default). Home's explicit null is the one
+        // exception: it means detached, not "resolve a fallback workspace".
+        const requestedCwd = options?.cwd === null ? '' : options?.cwd || resolveNewSessionCwd()
+        const params = await desktopSessionCreateParams(requestedCwd.trim())
         const created = await requestGateway<SessionCreateResponse>('session.create', params)
         const stored = created.stored_session_id
 
