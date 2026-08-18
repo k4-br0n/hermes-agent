@@ -247,6 +247,9 @@ describe('buildRegistryProfileRoutes', () => {
     expect(
       registryGatewayWsUrl({ profile: 'research', sharedRemote: true }, 'wss://gateway.example/api/ws?token=secret')
     ).toBe('wss://gateway.example/api/ws?token=secret&profile=research')
+    expect(
+      registryGatewayWsUrl({ profile: 'research', sharedPrimary: true }, 'wss://gateway.example/api/ws?token=secret')
+    ).toBe('wss://gateway.example/api/ws?token=secret&profile=research')
     expect(registryGatewayWsUrl({ profile: 'research' }, 'ws://127.0.0.1:5151/api/ws?token=local')).toBe(
       'ws://127.0.0.1:5151/api/ws?token=local'
     )

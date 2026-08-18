@@ -20,22 +20,22 @@ _profile_scoped = _registry.profile_scoped
 def _(rid, params: dict) -> dict:
     """Repos for the desktop overview: scanned-from-disk (cached) ∪ session-derived."""
     try:
-        db = _get_db()
-        if db is None:
-            return _ok(rid, {"repos": []})
-        from hermes_cli import projects_db as pdb
+        with _profile_db(params) as db:
+            if db is None:
+                return _ok(rid, {"repos": []})
+            from hermes_cli import projects_db as pdb
 
-        policy = _repo_discovery_policy()
-        policy_key = _repo_discovery_policy_key(policy)
-        with pdb.connect_closing() as conn:
-            pdb.reconcile_discovered_repos_policy(
-                conn,
-                policy_key,
-                preserve_unversioned=_repo_discovery_policy_is_default(policy),
-            )
-            repos = _discover_repos_payload(
-                db, conn=conn, include_cached=policy["enabled"]
-            )
+            policy = _repo_discovery_policy()
+            policy_key = _repo_discovery_policy_key(policy)
+            with pdb.connect_closing() as conn:
+                pdb.reconcile_discovered_repos_policy(
+                    conn,
+                    policy_key,
+                    preserve_unversioned=_repo_discovery_policy_is_default(policy),
+                )
+                repos = _discover_repos_payload(
+                    db, conn=conn, include_cached=policy["enabled"]
+                )
         return _ok(rid, {"repos": repos, "discovery_policy": policy})
     except Exception as e:
         return _err(rid, 5061, str(e))
@@ -88,19 +88,19 @@ def _(rid, params: dict) -> dict:
             elif not policy["enabled"]:
                 pdb.clear_discovered_repos(conn, policy_key=policy_key)
 
-        db = _get_db()
-        return _ok(
-            rid,
-            {
-                "repos": _discover_repos_payload(
-                    db, include_cached=policy["enabled"]
-                )
-                if db is not None
-                else [],
-                "accepted": accepted,
-                "discovery_policy": policy,
-            },
-        )
+        with _profile_db(params) as db:
+            return _ok(
+                rid,
+                {
+                    "repos": _discover_repos_payload(
+                        db, include_cached=policy["enabled"]
+                    )
+                    if db is not None
+                    else [],
+                    "accepted": accepted,
+                    "discovery_policy": policy,
+                },
+            )
     except Exception as e:
         return _err(rid, 5061, str(e))
 
@@ -113,17 +113,17 @@ def _(rid, params: dict) -> dict:
     Lanes carry no session rows here; drill-in uses ``projects.project_sessions``.
     """
     try:
-        db = _get_db()
-        if db is None:
-            return _ok(rid, {"projects": [], "active_id": None, "scoped_session_ids": []})
+        with _profile_db(params) as db:
+            if db is None:
+                return _ok(rid, {"projects": [], "active_id": None, "scoped_session_ids": []})
 
-        tree, active_id = _build_project_tree(
-            db,
-            preview_limit=int(params.get("preview_limit") or 3),
-            hydrate=False,
-            session_limit=int(params.get("session_limit") or 2000),
-            include_discovered=True,
-        )
+            tree, active_id = _build_project_tree(
+                db,
+                preview_limit=int(params.get("preview_limit") or 3),
+                hydrate=False,
+                session_limit=int(params.get("session_limit") or 2000),
+                include_discovered=True,
+            )
         return _ok(
             rid,
             {"projects": tree["projects"], "active_id": active_id, "scoped_session_ids": tree["scoped_session_ids"]},
@@ -142,16 +142,16 @@ def _(rid, params: dict) -> dict:
         if not project_id:
             return _err(rid, 5063, "project_id required")
 
-        db = _get_db()
-        if db is None:
-            return _ok(rid, {"project": None})
+        with _profile_db(params) as db:
+            if db is None:
+                return _ok(rid, {"project": None})
 
-        # Drill-in only needs the entered project (which has sessions), so skip
-        # the zero-session discovery tier entirely.
-        tree, _active = _build_project_tree(
-            db, preview_limit=0, hydrate=True, session_limit=int(params.get("session_limit") or 5000),
-            include_discovered=False,
-        )
+            # Drill-in only needs the entered project (which has sessions), so skip
+            # the zero-session discovery tier entirely.
+            tree, _active = _build_project_tree(
+                db, preview_limit=0, hydrate=True, session_limit=int(params.get("session_limit") or 5000),
+                include_discovered=False,
+            )
         proj = next((p for p in tree["projects"] if p["id"] == project_id), None)
         return _ok(rid, {"project": proj})
     except Exception as e:
