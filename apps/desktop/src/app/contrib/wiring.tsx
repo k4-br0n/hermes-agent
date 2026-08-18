@@ -62,9 +62,9 @@ import {
   $resumeFailedSessionId,
   $selectedStoredSessionId,
   $sessions,
+  foregroundSessionIdForProfile,
   getRememberedRoute,
   getRememberedSessionId,
-  profileForegroundNavigation,
   sessionMatchesStoredId,
   sessionPinId,
   setAwaitingResponse,
@@ -244,30 +244,32 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // per-profile tile set and makes the source foreground impossible to recover.
   const captureProfileForeground = useCallback(
     (profile: string) => {
-      const decision = profileForegroundNavigation(
+      const foregroundSessionId = foregroundSessionIdForProfile(
         sessions,
         profile,
         focusedSessionTabAnchor(),
-        location.pathname,
         routedSessionId,
-        selectedStoredSessionId,
-        isOverlayView(appViewForPath(location.pathname)),
-        location.pathname === NEW_CHAT_ROUTE
+        selectedStoredSessionId
       )
 
-      if (decision.kind === 'session') {
-        setRememberedSessionId(decision.sessionId, profile)
-        setRememberedRoute(sessionRoute(decision.sessionId), profile)
+      if (foregroundSessionId) {
+        setRememberedSessionId(foregroundSessionId, profile)
+        setRememberedRoute(sessionRoute(foregroundSessionId), profile)
 
         return
       }
 
-      if (decision.kind === 'route') {
-        setRememberedRoute(decision.route, profile)
+      // A session-shaped route that cannot yet be ownership-validated must not
+      // erase known-good memory. Non-session pages are safe to preserve; an
+      // explicit blank chat clears the stale session fallback as well.
+      if (routedSessionId || isOverlayView(appViewForPath(location.pathname))) {
+        return
+      }
 
-        if (decision.clearSession) {
-          setRememberedSessionId(null, profile)
-        }
+      setRememberedRoute(location.pathname, profile)
+
+      if (location.pathname === NEW_CHAT_ROUTE) {
+        setRememberedSessionId(null, profile)
       }
     },
     [location.pathname, routedSessionId, selectedStoredSessionId, sessions]

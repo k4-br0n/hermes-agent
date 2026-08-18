@@ -139,35 +139,6 @@ export function foregroundSessionIdForProfile(
   return null
 }
 
-export type ProfileForegroundNavigation =
-  { kind: 'none' } | { clearSession: boolean; kind: 'route'; route: string } | { kind: 'session'; sessionId: string }
-
-/** Decide what a profile switch should remember before any gateway/layout swap.
- * Explicit blank chats and non-session pages outrank stale split-pane focus;
- * only a session-shaped workspace route allows the focused tile to win. */
-export function profileForegroundNavigation(
-  sessions: readonly Pick<SessionInfo, '_lineage_root_id' | 'id' | 'profile'>[],
-  profile: string,
-  focusedPaneId: null | string,
-  pathname: string,
-  routedSessionId: null | string,
-  selectedSessionId: null | string,
-  isOverlayRoute: boolean,
-  isBlankRoute: boolean
-): ProfileForegroundNavigation {
-  if (isOverlayRoute) {
-    return { kind: 'none' }
-  }
-
-  if (!routedSessionId) {
-    return { clearSession: isBlankRoute, kind: 'route', route: pathname }
-  }
-
-  const sessionId = foregroundSessionIdForProfile(sessions, profile, focusedPaneId, routedSessionId, selectedSessionId)
-
-  return sessionId ? { kind: 'session', sessionId } : { kind: 'none' }
-}
-
 /**
  * The profile a routed session belongs to, for keying the remembered id.
  *
