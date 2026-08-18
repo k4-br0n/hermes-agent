@@ -115,6 +115,30 @@ export function sessionBelongsToProfile(
   })
 }
 
+/** Resolve the session that is actually in front when a profile switch begins.
+ * A focused session tile outranks the route-backed main chat; background turns
+ * may keep that main chat live, but they must not replace the tab the user chose.
+ * Every candidate is ownership-checked before it can become profile memory. */
+export function foregroundSessionIdForProfile(
+  sessions: readonly Pick<SessionInfo, '_lineage_root_id' | 'id' | 'profile'>[],
+  profile: string,
+  focusedPaneId: null | string,
+  routedSessionId: null | string,
+  selectedSessionId: null | string
+): null | string {
+  const focusedTileId = focusedPaneId?.startsWith('session-tile:')
+    ? focusedPaneId.slice('session-tile:'.length).trim() || null
+    : null
+
+  for (const candidate of [focusedTileId, routedSessionId, selectedSessionId]) {
+    if (candidate && sessionBelongsToProfile(sessions, candidate, profile)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
 /**
  * The profile a routed session belongs to, for keying the remembered id.
  *

@@ -21,7 +21,7 @@ import { FindBar } from '@/components/find-bar'
 import { GatewayConnectingOverlay } from '@/components/gateway-connecting-overlay'
 import { NotificationStack } from '@/components/notifications'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
-import { $newSessionTabAction, registerPaneCloser } from '@/components/pane-shell/tree/store'
+import { $newSessionTabAction, focusedSessionTabAnchor, registerPaneCloser } from '@/components/pane-shell/tree/store'
 import { FloatingPet } from '@/components/pet/floating-pet'
 import { RemoteDisplayBanner } from '@/components/remote-display-banner'
 import { emitGatewayEvent } from '@/contrib/events'
@@ -47,7 +47,8 @@ import {
   ensureGatewayProfile,
   newSessionInProfile,
   normalizeProfileKey,
-  refreshActiveProfile
+  refreshActiveProfile,
+  registerProfileForegroundCapture
 } from '@/store/profile'
 import { $startWorkSessionRequest, followActiveSessionCwd } from '@/store/projects'
 import {
@@ -63,13 +64,16 @@ import {
   $selectedStoredSessionId,
   $sessionResumeRequest,
   $sessions,
+  foregroundSessionIdForProfile,
   getRememberedRoute,
   getRememberedSessionId,
   sessionMatchesStoredId,
   sessionPinId,
   setAwaitingResponse,
   setBusy,
-  setMessages
+  setMessages,
+  setRememberedRoute,
+  setRememberedSessionId
 } from '@/store/session'
 import { clearSessionTodos, setSessionTodos, todosForHydration } from '@/store/todos'
 import { armWakeWord, stopClientCapture } from '@/store/wake-word'
@@ -238,6 +242,51 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const clearRoutedSessionIntent = useCallback(() => {
     routedSessionIdRef.current = null
   }, [])
+
+  // Profile switching must remember the chat actually in front, not whichever
+  // route-backed session happens to still be running behind a focused tile.
+  // Capture synchronously from selectProfile before the gateway switch swaps the
+  // per-profile tile set and makes the source foreground impossible to recover.
+  const captureProfileForeground = useCallback(
+    (profile: string) => {
+      const foregroundSessionId = foregroundSessionIdForProfile(
+        sessions,
+        profile,
+        focusedSessionTabAnchor(),
+        routedSessionId,
+        selectedStoredSessionId
+      )
+
+      if (foregroundSessionId) {
+        setRememberedSessionId(foregroundSessionId, profile)
+        setRememberedRoute(sessionRoute(foregroundSessionId), profile)
+
+        return
+      }
+
+      // A session-shaped route that cannot yet be ownership-validated must not
+      // erase known-good memory. Non-session pages are safe to preserve; an
+      // explicit blank chat clears the stale session fallback as well.
+      if (routedSessionId || isOverlayView(appViewForPath(location.pathname))) {
+        return
+      }
+
+      setRememberedRoute(location.pathname, profile)
+
+      if (location.pathname === NEW_CHAT_ROUTE) {
+        setRememberedSessionId(null, profile)
+      }
+    },
+    [location.pathname, routedSessionId, selectedStoredSessionId, sessions]
+  )
+
+  useEffect(() => {
+    if (isAuxiliaryWindow() || isHudWindow()) {
+      return
+    }
+
+    return registerProfileForegroundCapture(captureProfileForeground)
+  }, [captureProfileForeground])
 
   // Point the workspace at the route: the pane contribution re-registers
   // headerVeto from $workspaceIsPage (so the main zone's tab bar stands down

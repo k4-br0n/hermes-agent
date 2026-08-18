@@ -223,6 +223,23 @@ export function requestProfileNavigationRestore(profile: string): void {
   })
 }
 
+// The profile store owns the switch click but intentionally knows nothing about
+// router/layout/session state. The main wiring surface registers this capture so
+// a switch can persist the chat that is actually in front (including a focused
+// session tile) before the gateway and per-profile tile set change underneath it.
+type ProfileForegroundCapture = (profile: string) => void
+let profileForegroundCapture: ProfileForegroundCapture | null = null
+
+export function registerProfileForegroundCapture(capture: ProfileForegroundCapture): () => void {
+  profileForegroundCapture = capture
+
+  return () => {
+    if (profileForegroundCapture === capture) {
+      profileForegroundCapture = null
+    }
+  }
+}
+
 // Route profile-scoped REST settings (config/env/skills/tools/model/…) to the
 // profile the live gateway is currently on, and drop cached settings from the
 // previous profile so pages refetch against the right backend. Fires once
@@ -515,10 +532,20 @@ export const $profileScope = computed([$showAllProfiles, $activeGatewayProfile],
 // $activeGatewayProfile → name, so $profileScope follows).
 export function selectProfile(name: string): void {
   const target = normalizeProfileKey(name)
+  const current = normalizeProfileKey($activeGatewayProfile.get())
+  const leavingAllProfiles = $showAllProfiles.get()
   // Switching profiles (or coming back from the all-profiles browse view)
   // restores that profile's last route/session; re-tapping the profile you're
   // already in leaves your session be.
-  const switching = $showAllProfiles.get() || target !== normalizeProfileKey($activeGatewayProfile.get())
+  const switching = leavingAllProfiles || target !== current
+
+  // Capture only a concrete source profile. All Profiles is a browse aggregate,
+  // not an owning context, so leaving it must not overwrite whichever profile's
+  // foreground memory was already recorded.
+  if (!leavingAllProfiles && target !== current) {
+    profileForegroundCapture?.(current)
+  }
+
   $showAllProfiles.set(false)
   $newChatProfile.set(target)
 
