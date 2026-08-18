@@ -8,6 +8,7 @@ import {
   setCurrentCwd,
   setNewChatWorkspaceTarget
 } from '@/store/session'
+import { $projectScope, $projectTree, ALL_PROJECTS } from '@/store/projects'
 
 import { startWorkspaceSession } from './workspace-session-target'
 
@@ -26,7 +27,49 @@ describe('startWorkspaceSession', () => {
     setCurrentBranch('')
     setCurrentCwd('')
     setNewChatWorkspaceTarget(undefined)
+    $projectScope.set(ALL_PROJECTS)
+    $projectTree.set([])
     vi.restoreAllMocks()
+  })
+
+  it('keeps an explicit Home target detached from the previous project', () => {
+    $projectScope.set('p_previous')
+    $projectTree.set([
+      {
+        id: 'p_previous',
+        label: 'Previous project',
+        path: '/previous-workspace',
+        previewSessions: [],
+        repos: [],
+        sessionCount: 0
+      }
+    ])
+    setCurrentCwd('/previous-workspace')
+    setNewChatWorkspaceTarget('/previous-workspace')
+
+    const requestGateway = vi.fn()
+    const followActiveSessionCwd = vi.fn()
+    const onExplicitWorkspace = vi.fn()
+    const startFreshSessionDraft = vi.fn((options?: { workspaceTarget: null | string }) => {
+      setNewChatWorkspaceTarget(options?.workspaceTarget)
+      setCurrentCwd(options?.workspaceTarget ?? '')
+    })
+
+    startWorkspaceSession({
+      activeSessionIdRef: { current: null },
+      followActiveSessionCwd,
+      onExplicitWorkspace,
+      path: null,
+      requestGateway,
+      startFreshSessionDraft
+    })
+
+    expect(startFreshSessionDraft).toHaveBeenCalledWith({ workspaceTarget: null })
+    expect(requestGateway).not.toHaveBeenCalled()
+    expect(followActiveSessionCwd).not.toHaveBeenCalled()
+    expect(onExplicitWorkspace).not.toHaveBeenCalled()
+    expect($newChatWorkspaceTarget.get()).toBeNull()
+    expect($currentCwd.get()).toBe('')
   })
 
   it('keeps a newer sidebar target when an older project lookup resolves', async () => {
@@ -40,7 +83,7 @@ describe('startWorkspaceSession', () => {
 
     const activeSessionIdRef = { current: null }
 
-    const startFreshSessionDraft = vi.fn((options?: { workspaceTarget: string }) => {
+    const startFreshSessionDraft = vi.fn((options?: { workspaceTarget: null | string }) => {
       setNewChatWorkspaceTarget(options?.workspaceTarget)
       setCurrentCwd(options?.workspaceTarget || '')
     })
