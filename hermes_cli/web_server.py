@@ -17029,7 +17029,16 @@ async def gateway_ws(ws: WebSocket) -> None:
 
     from tui_gateway.ws import handle_ws
 
-    await handle_ws(ws)
+    # A shared remote Desktop connection identifies the selected profile in the
+    # websocket query string. Scope the connection task to that profile so the
+    # gateway's projects/config/session RPCs resolve against its HERMES_HOME.
+    # asyncio.to_thread and tui_gateway.dispatch both preserve this ContextVar.
+    profile = (ws.query_params.get("profile") or "").strip() or None
+    try:
+        with _config_profile_scope(profile):
+            await handle_ws(ws)
+    except HTTPException as exc:
+        await ws.close(code=4404, reason=str(exc.detail)[:120])
 
 
 # ---------------------------------------------------------------------------
