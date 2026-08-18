@@ -553,7 +553,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (
       !profileNavigationRequest ||
-      !profileNavigationRequest.ready ||
       profileNavigationRequest.sequence === lastProfileNavigationRequestRef.current ||
       normalizeProfileKey(activeGatewayProfile) !== profileNavigationRequest.profile
     ) {
