@@ -135,6 +135,25 @@ describe('profile-scoped cache invalidation', () => {
 })
 
 describe('selectProfile navigation restore', () => {
+  it('waits for the target connection descriptor before marking navigation ready', async () => {
+    let resolveConnection!: (connection: HermesConnection) => void
+
+    const connectionReady = new Promise<HermesConnection>(resolve => {
+      resolveConnection = resolve
+    })
+
+    getConnection.mockReturnValueOnce(connectionReady)
+    selectProfile('coder')
+
+    expect($profileNavigationRequest.get()).toMatchObject({ profile: 'coder', ready: false, sequence: 1 })
+
+    resolveConnection(remoteConn({ profile: 'coder' }))
+    await connectionReady
+    await vi.waitFor(() =>
+      expect($profileNavigationRequest.get()).toMatchObject({ profile: 'coder', ready: true, sequence: 1 })
+    )
+  })
+
   it('captures the source profile foreground before requesting the target restore', () => {
     const capture = vi.fn()
     const unregister = registerProfileForegroundCapture(capture)
