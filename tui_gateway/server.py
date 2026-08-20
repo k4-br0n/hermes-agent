@@ -1434,7 +1434,16 @@ def _db_for_profile(profile: str | None = None):
     """
     profile_home = _profile_home(profile)
     if profile_home is None:
-        return _get_db(), False
+        # A profile-scoped dashboard WebSocket binds HERMES_HOME through the
+        # context-local override rather than repeating params.profile on every
+        # JSON-RPC request. Honour that scope for state.db too: _get_db() is the
+        # process-global launch-profile handle and would otherwise combine a
+        # named profile's projects.db with the default profile's sessions.
+        override = get_hermes_home_override()
+        if override and Path(override).resolve() != Path(_hermes_home).resolve():
+            profile_home = Path(override)
+        else:
+            return _get_db(), False
     try:
         from hermes_state import SessionDB
 

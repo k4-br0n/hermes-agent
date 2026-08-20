@@ -286,12 +286,12 @@ export function buildRegistryProfileRoutes({
   return routes
 }
 
-/** Add the backend profile scope only for registry remote/cloud descriptors. */
+/** Add the backend profile scope for any descriptor sharing one remote host. */
 export function registryGatewayWsUrl(
-  connection: { profile?: null | string; sharedRemote?: boolean },
+  connection: { profile?: null | string; sharedPrimary?: boolean; sharedRemote?: boolean },
   wsUrl: string
 ): string {
-  if (!connection.sharedRemote) {
+  if (!connection.sharedRemote && !connection.sharedPrimary) {
     return wsUrl
   }
 
