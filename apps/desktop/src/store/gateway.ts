@@ -472,15 +472,11 @@ function createSecondary(profile: string, connectionId: null | string = null): S
   return entry
 }
 
-// True when `profile`'s backend route resolves to the SHARED primary backend
-// (global-remote case 3 in resolveProfileBackendRoute). Both shared-primary and
-// pooled descriptors carry `profile` so WebSocket URL minting targets the right
-// profile. `sharedPrimary` is the explicit discriminator; treating every tagged
-// descriptor as shared strands local/own-remote pooled profiles on the default
-// socket. Dialing a second socket at the shared descriptor is wrong — over SSH
-// the second dial fails (tunnel/token are per-backend) and the closed socket
-// poisons the active gateway with "not connected" even though the primary is
-// open right next to it.
+// True when an SSH profile route must reuse the SHARED primary socket. SSH
+// tunnels/tickets are per-backend, so a second socket can fail and poison the
+// active gateway. Direct remote shared-primary routes are different: their
+// WebSocket URL carries `?profile=`, so they need a dedicated profile-scoped
+// socket or project/config RPCs silently resolve against the default profile.
 async function sharedPrimaryRoute(profile: string): Promise<boolean> {
   const desktop = window.hermesDesktop
 
@@ -491,7 +487,12 @@ async function sharedPrimaryRoute(profile: string): Promise<boolean> {
   try {
     const conn = await desktop.getConnection(profile)
 
-    return Boolean(conn && typeof conn === 'object' && (conn as { sharedPrimary?: boolean }).sharedPrimary === true)
+    return Boolean(
+      conn &&
+        typeof conn === 'object' &&
+        (conn as { mode?: string; sharedPrimary?: boolean }).sharedPrimary === true &&
+        (conn as { mode?: string }).mode === 'ssh'
+    )
   } catch {
     return false
   }
@@ -760,11 +761,10 @@ export async function ensureGatewayForProfile(profile: string): Promise<void> {
     return
   }
 
-  // Global-remote share (routing case 3): one remote host serves every
-  // profile through the PRIMARY socket, scoped per request. Activate the
-  // primary instead of dialing a doomed duplicate socket at the same
-  // descriptor — $activeGatewayProfile still moves to `key`, so request
-  // scoping and profile-aware surfaces behave identically.
+  // SSH shared-primary routes reuse the primary socket because the tunnel and
+  // ticket belong to that backend. Direct remote shared-primary routes continue
+  // below and dial their `?profile=` URL as a real secondary, keeping Projects
+  // and other plain JSON-RPC surfaces scoped without per-method params.
   if (await sharedPrimaryRoute(key)) {
     applyActive(g.primaryProfile, activationEpoch)
 

@@ -575,9 +575,11 @@ export function useSessionActions({
 
       try {
         // Fresh tile → the caller's workspace when one was named (the sidebar
-        // "+" on a project/worktree lane), else the resolved new-session cwd
-        // (project scope → configured default).
-        const params = await desktopSessionCreateParams((options?.cwd || resolveNewSessionCwd()).trim())
+        // "+" on a project/worktree lane), an explicitly detached tab when
+        // `cwd` is null, else the resolved new-session cwd.
+        const hasExplicitCwd = Object.hasOwn(options ?? {}, 'cwd')
+        const cwd = hasExplicitCwd ? (options?.cwd ?? '').trim() : resolveNewSessionCwd().trim()
+        const params = await desktopSessionCreateParams(cwd)
         const created = await requestGateway<SessionCreateResponse>('session.create', params)
         const stored = created.stored_session_id
 
