@@ -14,7 +14,13 @@ import {
 } from '@/lib/storage'
 import { invalidateCronModelImpactScopeState } from '@/store/cron-model-impact-scope'
 import { $gateway, ensureGatewayForAgent, ensureGatewayForProfile, openGatewayForProfile } from '@/store/gateway'
-import { setConnection } from '@/store/session'
+import {
+  clearProfileSwitchRestoreIntent,
+  getProfileSwitchBehavior,
+  requestProfileSwitchRestore,
+  scopeProfileSwitchRestoreIntent
+} from '@/store/profile-switch-behavior'
+import { $connection, setConnection } from '@/store/session'
 import { resetStarmapGraph } from '@/store/starmap'
 import type { ProfileInfo } from '@/types/hermes'
 
@@ -306,7 +312,10 @@ async function resolveConnectionForProfile(profile: string): Promise<HermesConne
 // their sockets — so their sessions keep streaming concurrently. A null/empty
 // target means "no explicit profile" → keep the current gateway (a plain new
 // chat stays put; single-profile users never leave the primary).
-export async function ensureGatewayProfile(profile: string | null | undefined): Promise<void> {
+export async function ensureGatewayProfile(
+  profile: string | null | undefined,
+  onActivated?: (connection: HermesConnection | null) => void
+): Promise<void> {
   if (profile == null || !String(profile).trim()) {
     // "No explicit profile" = use the current gateway. But if an explicit swap
     // (e.g. the user just picked a profile in the switcher) is still in flight,
@@ -322,6 +331,8 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
   const target = normalizeProfileKey(profile)
 
   if (normalizeProfileKey($activeGatewayProfile.get()) === target && $gateway.get()) {
+    onActivated?.($connection.get())
+
     return
   }
 
@@ -331,6 +342,8 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
     await gatewaySwitch.catch(() => undefined)
 
     if (normalizeProfileKey($activeGatewayProfile.get()) === target && $gateway.get()) {
+      onActivated?.($connection.get())
+
       return
     }
   }
@@ -357,6 +370,7 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
         setConnection(connection)
       }
     })
+    onActivated?.(connection)
   })()
 
   try {
@@ -493,6 +507,8 @@ export const $profileScope = computed([$showAllProfiles, $activeGatewayProfile],
 // Switch the active context to `name`: leave "All profiles" mode, point new
 // chats at it, and swap the single live gateway onto its backend (which moves
 // $activeGatewayProfile → name, so $profileScope follows).
+let profileSelectionRevision = 0
+
 export function selectProfile(name: string): void {
   const target = normalizeProfileKey(name)
   // Switching profiles (or coming back from the all-profiles browse view) starts
@@ -501,11 +517,35 @@ export function selectProfile(name: string): void {
   $showAllProfiles.set(false)
   $newChatProfile.set(target)
 
-  if (switching) {
-    requestFreshSession()
+  if (!switching) {
+    void ensureGatewayProfile(target)
+
+    return
   }
 
-  void ensureGatewayProfile(target)
+  const revision = ++profileSelectionRevision
+
+  const restoreIntent =
+    getProfileSwitchBehavior() === 'restore_last_session' ? requestProfileSwitchRestore(target) : null
+
+  // Always clear the outgoing transcript before the target backend becomes
+  // active. Restore mode later focuses a validated session in-place; it never
+  // leaves the previous profile's chat visible while target data loads.
+  requestFreshSession()
+
+  void ensureGatewayProfile(target, connection => {
+    if (!restoreIntent) {
+      return
+    }
+
+    if (revision !== profileSelectionRevision || !connection) {
+      clearProfileSwitchRestoreIntent(restoreIntent.sequence)
+
+      return
+    }
+
+    scopeProfileSwitchRestoreIntent(restoreIntent.sequence, connection.connectionId ?? null)
+  })
 }
 
 // Start a fresh session in `name` WITHOUT collapsing the "All profiles" browse

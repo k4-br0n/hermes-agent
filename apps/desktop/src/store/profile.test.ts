@@ -85,6 +85,17 @@ describe('ensureGatewayProfile → $connection sync (#46651)', () => {
     expect($connection.get()?.profile).toBe('vps-remote')
   })
 
+  it('reports the exact target descriptor before releasing the activation lease', async () => {
+    const target = remoteConn({ connectionId: 'remote-b' })
+    const onActivated = vi.fn()
+    getConnection.mockResolvedValue(target)
+
+    await ensureGatewayProfile('vps-remote', onActivated)
+
+    expect(onActivated).toHaveBeenCalledTimes(1)
+    expect(onActivated).toHaveBeenCalledWith(target)
+  })
+
   it('resyncs $connection back to local when returning to the default profile', async () => {
     $activeGatewayProfile.set('vps-remote')
     $connection.set(remoteConn())
