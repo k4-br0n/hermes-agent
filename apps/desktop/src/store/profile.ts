@@ -203,21 +203,6 @@ export function requestFreshSession(): void {
   $freshSessionRequest.set($freshSessionRequest.get() + 1)
 }
 
-export interface ProfileForegroundRestoreRequest {
-  profile: string
-  sequence: number
-}
-
-let profileForegroundRestoreSequence = 0
-export const $profileForegroundRestoreRequest = atom<ProfileForegroundRestoreRequest | null>(null)
-
-export function requestProfileForegroundRestore(profile: string): void {
-  $profileForegroundRestoreRequest.set({
-    profile: normalizeProfileKey(profile),
-    sequence: ++profileForegroundRestoreSequence
-  })
-}
-
 // Route profile-scoped REST settings (config/env/skills/tools/model/…) to the
 // profile the live gateway is currently on, and drop cached settings from the
 // previous profile so pages refetch against the right backend. Fires once
@@ -518,7 +503,6 @@ export function selectProfile(name: string): void {
 
   if (switching) {
     requestFreshSession()
-    requestProfileForegroundRestore(target)
   }
 
   void ensureGatewayProfile(target)
