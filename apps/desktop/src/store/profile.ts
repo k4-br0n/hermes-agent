@@ -14,6 +14,7 @@ import {
 } from '@/lib/storage'
 import { invalidateCronModelImpactScopeState } from '@/store/cron-model-impact-scope'
 import { $gateway, ensureGatewayForAgent, ensureGatewayForProfile, openGatewayForProfile } from '@/store/gateway'
+import { getProfileSwitchBehavior, requestProfileSwitchRestore } from '@/store/profile-switch-behavior'
 import { setConnection } from '@/store/session'
 import { resetStarmapGraph } from '@/store/starmap'
 import type { ProfileInfo } from '@/types/hermes'
@@ -502,6 +503,13 @@ export function selectProfile(name: string): void {
   $newChatProfile.set(target)
 
   if (switching) {
+    if (getProfileSwitchBehavior() === 'restore_last_session') {
+      requestProfileSwitchRestore(target)
+    }
+
+    // Always clear the outgoing transcript before the target backend becomes
+    // active. Restore mode later focuses a validated session in-place; it never
+    // leaves the previous profile's chat visible while target data loads.
     requestFreshSession()
   }
 
