@@ -490,8 +490,8 @@ async function sharedPrimaryRoute(profile: string): Promise<boolean> {
     return Boolean(
       conn &&
         typeof conn === 'object' &&
-        (conn as { mode?: string; sharedPrimary?: boolean }).sharedPrimary === true &&
-        (conn as { mode?: string }).mode === 'ssh'
+        (conn as { remoteKind?: string; sharedPrimary?: boolean }).sharedPrimary === true &&
+        (conn as { remoteKind?: string }).remoteKind === 'ssh'
     )
   } catch {
     return false

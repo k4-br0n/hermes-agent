@@ -72,7 +72,14 @@ describe('ensureGatewayForProfile under a shared global remote', () => {
     installDesktop({
       // Shared descriptor: primary connection tagged with the profile scope
       // AND the explicit sharedPrimary marker.
-      getConnection: vi.fn(async () => ({ mode: 'ssh', port: 4242, profile: 'venture', sharedPrimary: true, token: 't' }))
+      getConnection: vi.fn(async () => ({
+        mode: 'remote',
+        port: 4242,
+        profile: 'venture',
+        remoteKind: 'ssh',
+        sharedPrimary: true,
+        token: 't'
+      }))
     })
 
     await ensureGatewayForProfile('venture')
