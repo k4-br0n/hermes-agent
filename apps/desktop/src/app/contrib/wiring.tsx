@@ -137,7 +137,6 @@ import {
 } from './hooks/use-background-sync'
 import { useDesktopIntegrations } from './hooks/use-desktop-integrations'
 import { usePetBridge } from './hooks/use-pet-bridge'
-import { useProfileForegroundRestore } from './hooks/use-profile-foreground-restore'
 import { useQuickEntryBridge } from './hooks/use-quick-entry-bridge'
 import { useSessionTileDelegate } from './hooks/use-session-tile-delegate'
 import { McpInstallDeepLinkDialog } from './mcp-install-deeplink-dialog'
@@ -511,13 +510,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     lastFreshRef.current = freshSessionRequest
     startFreshSessionDraft()
   }, [freshSessionRequest, startFreshSessionDraft])
-
-  useProfileForegroundRestore({
-    activeProfile: normalizeProfileKey(activeGatewayProfile),
-    navigate,
-    sessions,
-    startFreshSessionDraft
-  })
 
   // Swapping the live gateway to another source or profile must re-pull that
   // source's model/config/profile state. Two sources commonly both expose a
