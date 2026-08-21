@@ -40,6 +40,8 @@ export interface PaneMirror<T> {
   before?: (tile: T) => null | string | undefined
   minWidth: string
   title: (key: string) => string
+  /** Persist domain focus when this pane's tab is explicitly activated. */
+  activate?: (key: string) => void
   /** Custom lead NODE for the tile's tab (rendered before the label). A live,
    *  self-subscribing component (e.g. a session's status dot) so the strip needn't
    *  re-sync on status/color change — only `title` drives re-registration. */
@@ -106,6 +108,7 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
           },
           minWidth: cfg.minWidth,
           newTab: cfg.newTab?.(key),
+          onActivate: cfg.activate ? () => cfg.activate!(key) : undefined,
           // Every mirrored tile is a full workspace surface docked beside main —
           // and closeable, which is what keeps its tab when it lands in a zone of
           // its own (see strip-visibility.ts).

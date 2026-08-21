@@ -45,7 +45,8 @@ import {
   $selectedStoredSessionId,
   $sessions,
   sessionMatchesStoredId,
-  sessionPinId
+  sessionPinId,
+  setRememberedSessionId
 } from '@/store/session'
 import { requestForSessionProfile } from '@/store/session-request-router'
 import {
@@ -653,6 +654,7 @@ export const watchSessionTiles = paneMirror<SessionTile>({
   // its title through the tree, which loads after the tiles register. (The tab's
   // status dot subscribes to color/state itself, so it needs no `also` entry.)
   also: [$sessions, $projectTree],
+  activate: storedSessionId => setRememberedSessionId(storedSessionId, $activeGatewayProfile.get()),
   key: t => t.storedSessionId,
   prefix: 'session-tile',
   dir: t => t.dir,

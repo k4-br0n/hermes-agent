@@ -1,6 +1,8 @@
 import { atom } from 'nanostores'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { group } from '@/components/pane-shell/tree/model'
+import { $layoutTree, activateTreePane, revealTreePane } from '@/components/pane-shell/tree/store'
 import { contributesToWorkspace } from '@/components/pane-shell/workspace-scope'
 import { registry } from '@/contrib/registry'
 
@@ -97,5 +99,42 @@ describe('paneMirror workspace scope', () => {
 
     expect(contributesToWorkspace(pane, 'sessions')).toBe(true)
     expect(contributesToWorkspace(pane, 'bots', 'bot:connection-a::default')).toBe(false)
+  })
+})
+
+interface ActivationTile {
+  id: string
+}
+
+const activationSource = atom<ActivationTile[]>([])
+const activate = vi.fn()
+
+paneMirror<ActivationTile>({
+  activate,
+  close: () => undefined,
+  key: tile => tile.id,
+  minWidth: '10rem',
+  prefix: 'activation-test-tile',
+  render: () => null,
+  source: activationSource,
+  title: id => id
+})()
+
+describe('paneMirror activation', () => {
+  afterEach(() => {
+    activationSource.set([])
+    $layoutTree.set(null)
+    activate.mockClear()
+  })
+
+  it('runs the tile callback only for explicit tab activation', () => {
+    activationSource.set([{ id: 'session-a' }])
+    $layoutTree.set(group(['workspace', 'activation-test-tile:session-a'], { active: 'workspace', id: 'main' }))
+
+    revealTreePane('activation-test-tile:session-a')
+    expect(activate).not.toHaveBeenCalled()
+
+    activateTreePane('main', 'activation-test-tile:session-a')
+    expect(activate).toHaveBeenCalledWith('session-a')
   })
 })
