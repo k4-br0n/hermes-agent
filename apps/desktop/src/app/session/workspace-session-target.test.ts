@@ -21,6 +21,27 @@ describe('startWorkspaceSession', () => {
     vi.restoreAllMocks()
   })
 
+  it('keeps an explicit Home target detached instead of inheriting a project cwd', () => {
+    setCurrentCwd('/active-project')
+
+    const startFreshSessionDraft = vi.fn((options?: { workspaceTarget: null | string }) => {
+      setNewChatWorkspaceTarget(options?.workspaceTarget)
+    })
+
+    const requestGateway = vi.fn()
+
+    startWorkspaceSession({
+      activeSessionIdRef: { current: null },
+      path: null,
+      requestGateway,
+      startFreshSessionDraft
+    })
+
+    expect(startFreshSessionDraft).toHaveBeenCalledWith({ workspaceTarget: null })
+    expect($newChatWorkspaceTarget.get()).toBeNull()
+    expect(requestGateway).not.toHaveBeenCalled()
+  })
+
   it('keeps a newer sidebar target when an older project lookup resolves', async () => {
     const first = deferred<{ branch?: string; cwd?: string }>()
     const second = deferred<{ branch?: string; cwd?: string }>()
@@ -32,7 +53,7 @@ describe('startWorkspaceSession', () => {
 
     const activeSessionIdRef = { current: null }
 
-    const startFreshSessionDraft = vi.fn((options?: { workspaceTarget: string }) => {
+    const startFreshSessionDraft = vi.fn((options?: { workspaceTarget: null | string }) => {
       setNewChatWorkspaceTarget(options?.workspaceTarget)
       setCurrentCwd(options?.workspaceTarget || '')
     })
