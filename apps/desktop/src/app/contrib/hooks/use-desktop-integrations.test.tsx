@@ -140,8 +140,7 @@ describe('useDesktopIntegrations', () => {
           resumeExhaustedSessionId: props.resumeExhaustedSessionId,
           routedSessionId: props.routedSessionId,
           runtimeIdByStoredSessionId: { current: new Map() },
-          sessions: props.sessions,
-          visibleStoredSessionId: props.visibleStoredSessionId
+          sessions: props.sessions
         })
       },
       { initialProps: initial }
@@ -177,6 +176,7 @@ describe('useDesktopIntegrations', () => {
 
       await act(async () => {
         setProfileSwitchBehavior('restore_last_session')
+        setRememberedSessionId('tab-3', 'alpha')
         requestScopedRestore('alpha')
         await Promise.resolve()
       })

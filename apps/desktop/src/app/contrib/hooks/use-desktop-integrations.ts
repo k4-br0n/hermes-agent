@@ -20,8 +20,7 @@ import { openPluginInstallRequest } from '@/store/plugin-install-request'
 import {
   $profileSwitchBehavior,
   $profileSwitchRestoreIntent,
-  clearProfileSwitchRestoreIntent,
-  registerProfileSwitchAnchorCapture
+  clearProfileSwitchRestoreIntent
 } from '@/store/profile-switch-behavior'
 import { openFolderAsProject } from '@/store/projects'
 import {
@@ -55,7 +54,6 @@ interface DesktopIntegrationsParams {
   routedSessionId: null | string
   runtimeIdByStoredSessionId: { readonly current: Map<string, string> }
   sessions: readonly RememberedSession[]
-  visibleStoredSessionId: null | string
 }
 
 /**
@@ -75,8 +73,7 @@ export function useDesktopIntegrations({
   resumeExhaustedSessionId,
   routedSessionId,
   runtimeIdByStoredSessionId,
-  sessions,
-  visibleStoredSessionId
+  sessions
 }: DesktopIntegrationsParams): void {
   // Update polling — populates $desktopVersion/$updateStatus, which feed the
   // statusbar version pill and the update toasts. Also honors the main
@@ -107,24 +104,6 @@ export function useDesktopIntegrations({
   const profileSwitchRestoreIntent = useStore($profileSwitchRestoreIntent)
   const pendingConnectionId = useStore($pendingConnectionId)
 
-  // `selectProfile()` owns the explicit switch gesture, while this integration
-  // owner has the router and the true focused tile. Capture synchronously before
-  // the gateway swaps profile-scoped session/tile state.
-  useEffect(() => {
-    if (isHudWindow() || isSecondaryWindow()) {
-      return
-    }
-
-    return registerProfileSwitchAnchorCapture(() => {
-      if (visibleStoredSessionId && sessionBelongsToProfile(sessions, visibleStoredSessionId, activeProfile)) {
-        setRememberedSessionId(visibleStoredSessionId, activeProfile)
-      }
-
-      if (routedSessionId && sessionBelongsToProfile(sessions, routedSessionId, activeProfile)) {
-        setRememberedRoute(locationPathname, activeProfile)
-      }
-    })
-  }, [activeProfile, locationPathname, routedSessionId, sessions, visibleStoredSessionId])
 
   // Explicit profile-switch restore is deliberately separate from the one-shot
   // cold-start `restoredRef` behavior below. It restores a session through the
