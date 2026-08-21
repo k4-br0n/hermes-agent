@@ -227,6 +227,20 @@ describe('useDesktopIntegrations', () => {
       })
 
       expect(navigate).toHaveBeenCalledWith('/session-a', { replace: true })
+      expect(openSessionMock).not.toHaveBeenCalled()
+
+      result.rerender({
+        activeConnectionId: 'remote-a',
+        activeProfile: 'alpha',
+        locationPathname: '/session-a',
+        profileReady: true,
+        refreshSessions: async () => true,
+        resumeExhaustedSessionId: null,
+        routedSessionId: 'session-a',
+        sessions,
+        visibleStoredSessionId: 'session-a'
+      })
+
       expect(openSessionMock).toHaveBeenCalledWith('session-x', navigate, 'in-place')
     })
 

@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { closeActiveTab } from '@/app/chat/close-tab'
 import { commandFocusedPreview } from '@/app/chat/right-rail/preview-nav'
@@ -103,6 +103,14 @@ export function useDesktopIntegrations({
   }, [])
 
   const restoredRef = useRef(false)
+
+  const [pendingProfileSwitchTileFocus, setPendingProfileSwitchTileFocus] = useState<null | {
+    connectionId: null | string
+    mainSessionId: string
+    profile: string
+    tileSessionId: string
+  }>(null)
+
   const profileSwitchBehavior = useStore($profileSwitchBehavior)
   const profileSwitchRestoreIntent = useStore($profileSwitchRestoreIntent)
   const pendingConnectionId = useStore($pendingConnectionId)
@@ -206,12 +214,20 @@ export function useDesktopIntegrations({
       const last = getRememberedSessionId(activeProfile)
       clearProfileSwitchRestoreIntent(intent.sequence)
 
-      if (mainRoute && mainSessionId) {
+      if (mainRoute && mainSessionId && routedSessionId !== mainSessionId) {
         if (last && last !== mainSessionId) {
+          setPendingProfileSwitchTileFocus({
+            connectionId: activeConnectionId,
+            mainSessionId,
+            profile: activeProfile,
+            tileSessionId: last
+          })
           markSelectionRestore()
         }
 
         navigate(mainRoute, { replace: true })
+
+        return
       }
 
       if (last && last !== mainSessionId) {
@@ -237,8 +253,33 @@ export function useDesktopIntegrations({
     profileReady,
     profileSwitchBehavior,
     profileSwitchRestoreIntent,
-    refreshSessions
+    refreshSessions,
+    routedSessionId
   ])
+
+  // Restoring the main route is asynchronous. Focus the remembered tile only
+  // after that route has actually landed, otherwise its later selection paint
+  // wins and leaves tab 1 focused despite the earlier in-place tile command.
+  useEffect(() => {
+    const pending = pendingProfileSwitchTileFocus
+
+    if (!pending) {
+      return
+    }
+
+    if (pending.connectionId !== activeConnectionId || pending.profile !== activeProfile) {
+      setPendingProfileSwitchTileFocus(null)
+
+      return
+    }
+
+    if (routedSessionId !== pending.mainSessionId) {
+      return
+    }
+
+    setPendingProfileSwitchTileFocus(null)
+    openSession(pending.tileSessionId, navigate, 'in-place')
+  }, [activeConnectionId, activeProfile, navigate, pendingProfileSwitchTileFocus, routedSessionId])
 
   // Wait until boot has adopted the primary profile, then restore that profile's
   // navigation exactly once. The same effect owns subsequent writes so the
