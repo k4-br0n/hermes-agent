@@ -1596,11 +1596,22 @@ export function mergeTreeZones(groupIds: string[], paneId: string | readonly str
   }
 }
 
+type TreePaneActivationListener = (paneId: string) => void
+const treePaneActivationListeners = new Set<TreePaneActivationListener>()
+
+/** Observe explicit tab activation (click / keyboard), not programmatic reveal. */
+export function onTreePaneActivated(listener: TreePaneActivationListener): () => void {
+  treePaneActivationListeners.add(listener)
+
+  return () => treePaneActivationListeners.delete(listener)
+}
+
 export function activateTreePane(groupId: string, paneId: string) {
   const tree = $layoutTree.get()
 
-  if (tree) {
+  if (tree && findGroupOfPane(tree, paneId)?.id === groupId) {
     commit(setActivePaneOp(tree, groupId, paneId))
+    treePaneActivationListeners.forEach(listener => listener(paneId))
   }
 }
 

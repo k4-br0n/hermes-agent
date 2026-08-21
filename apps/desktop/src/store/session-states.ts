@@ -27,6 +27,7 @@ import {
   focusedSessionTabAnchor,
   moveTreePane,
   noteActiveTreeGroup,
+  onTreePaneActivated,
   revealTreePane
 } from '@/components/pane-shell/tree/store'
 import { stableArray } from '@/lib/stable-array'
@@ -45,6 +46,7 @@ import {
   markSessionRead,
   sessionMatchesStoredId,
   setActiveSessionStoredIdRotation,
+  setRememberedSessionId,
   setSessions
 } from './session'
 import { ackStoredSessionId, markSessionUnreadFinished } from './session-unread'
@@ -646,6 +648,31 @@ function saveTiles(tiles: SessionTile[]) {
 if (!isSecondaryWindow()) {
   $activeGatewayProfile.subscribe(() => {
     $sessionTiles.set([...(tilesByProfile[profileKey()] ?? [])])
+  })
+
+  // A tab click/keyboard activation is the authoritative user focus event.
+  // Persist it here instead of sampling later during a profile switch, when the
+  // loaded sessions page or shared layout may already have changed.
+  onTreePaneActivated(paneId => {
+    if (paneId === 'workspace') {
+      const selected = $selectedStoredSessionId.get()
+
+      if (selected) {
+        setRememberedSessionId(selected, $activeGatewayProfile.get())
+      }
+
+      return
+    }
+
+    if (!paneId.startsWith(TILE_PANE_PREFIX)) {
+      return
+    }
+
+    const storedSessionId = paneId.slice(TILE_PANE_PREFIX.length)
+
+    if ($sessionTiles.get().some(tile => tile.storedSessionId === storedSessionId)) {
+      setRememberedSessionId(storedSessionId, $activeGatewayProfile.get())
+    }
   })
 }
 

@@ -31,7 +31,6 @@ export const $profileSwitchBehavior = persistentAtom<ProfileSwitchBehavior>(
 export const $profileSwitchRestoreIntent = atom<ProfileSwitchRestoreIntent | null>(null)
 
 let restoreSequence = 0
-let captureAnchor: null | (() => void) = null
 
 export function getProfileSwitchBehavior(): ProfileSwitchBehavior {
   return $profileSwitchBehavior.get()
@@ -42,7 +41,6 @@ export function setProfileSwitchBehavior(value: ProfileSwitchBehavior): void {
 }
 
 export function requestProfileSwitchRestore(profile: string): ProfileSwitchRestoreIntent {
-  captureAnchor?.()
   const intent = { profile, sequence: ++restoreSequence }
   $profileSwitchRestoreIntent.set(intent)
 
@@ -58,17 +56,6 @@ export function scopeProfileSwitchRestoreIntent(sequence: number, connectionId: 
   }
 }
 
-/** Register the Desktop integration owner's synchronous visible-session capture. */
-export function registerProfileSwitchAnchorCapture(capture: () => void): () => void {
-  captureAnchor = capture
-
-  return () => {
-    if (captureAnchor === capture) {
-      captureAnchor = null
-    }
-  }
-}
-
 export function clearProfileSwitchRestoreIntent(sequence: number): void {
   if ($profileSwitchRestoreIntent.get()?.sequence === sequence) {
     $profileSwitchRestoreIntent.set(null)
@@ -78,7 +65,6 @@ export function clearProfileSwitchRestoreIntent(sequence: number): void {
 /** @internal Reset client-local preference and pending intent state for tests. */
 export function _resetProfileSwitchBehaviorForTests(): void {
   restoreSequence = 0
-  captureAnchor = null
   $profileSwitchBehavior.set(typeof window === 'undefined' ? 'fresh_draft' : normalizeProfileSwitchBehavior(storedString(STORAGE_KEY)))
   $profileSwitchRestoreIntent.set(null)
 }

@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ClientSessionState } from '@/app/types'
 import { findGroupOfPane, group, split } from '@/components/pane-shell/tree/model'
-import { $layoutTree } from '@/components/pane-shell/tree/store'
-import { $selectedStoredSessionId } from '@/store/session'
+import { $layoutTree, activateTreePane } from '@/components/pane-shell/tree/store'
+import { $activeGatewayProfile } from '@/store/profile'
+import { $selectedStoredSessionId, getRememberedSessionId } from '@/store/session'
 import type { SessionTile } from '@/store/session-states'
 import {
   $sessionStates,
@@ -22,6 +23,34 @@ import {
 
 const tile = (storedSessionId: string): SessionTile => ({ storedSessionId })
 const tilePane = (id: string) => `session-tile:${id}`
+
+describe('remembered profile focus', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    $activeGatewayProfile.set('alpha')
+    $selectedStoredSessionId.set(null)
+    $sessionTiles.set([])
+    $layoutTree.set(group(['workspace'], { active: 'workspace', id: 'main' }))
+  })
+
+  it('persists the session tile at the native user activation seam', () => {
+    $sessionTiles.set([tile('tab-4')])
+    $layoutTree.set(group(['workspace', tilePane('tab-4')], { active: 'workspace', id: 'main' }))
+
+    activateTreePane('main', tilePane('tab-4'))
+
+    expect(getRememberedSessionId('alpha')).toBe('tab-4')
+  })
+
+  it('persists the selected main session when the workspace tab is activated', () => {
+    $selectedStoredSessionId.set('session-a')
+    $layoutTree.set(group([tilePane('tab-4'), 'workspace'], { active: tilePane('tab-4'), id: 'main' }))
+
+    activateTreePane('main', 'workspace')
+
+    expect(getRememberedSessionId('alpha')).toBe('session-a')
+  })
+})
 
 describe('resetTileRuntimeBindings', () => {
   afterEach(() => {

@@ -6,7 +6,6 @@ import {
   _resetProfileSwitchBehaviorForTests,
   clearProfileSwitchRestoreIntent,
   getProfileSwitchBehavior,
-  registerProfileSwitchAnchorCapture,
   requestProfileSwitchRestore,
   scopeProfileSwitchRestoreIntent,
   setProfileSwitchBehavior
@@ -35,18 +34,13 @@ describe('profile switch behavior preference', () => {
     expect(localStorage.getItem('hermes.desktop.profile-switch-behavior.v1')).toBe('restore_last_session')
   })
 
-  it('captures the visible anchor and replaces an older intent with the latest profile', () => {
-    let captures = 0
-    registerProfileSwitchAnchorCapture(() => {
-      captures += 1
-    })
+  it('replaces an older intent with the latest profile', () => {
     requestProfileSwitchRestore('beta')
     const first = $profileSwitchRestoreIntent.get()
     requestProfileSwitchRestore('gamma')
     const latest = $profileSwitchRestoreIntent.get()
 
     expect(first).not.toBeNull()
-    expect(captures).toBe(2)
     expect(latest).toMatchObject({ profile: 'gamma' })
     expect(latest?.sequence).toBeGreaterThan(first?.sequence ?? 0)
 
@@ -58,7 +52,6 @@ describe('profile switch behavior preference', () => {
   })
 
   it('clears only the matching latest restore intent', () => {
-    registerProfileSwitchAnchorCapture(() => undefined)
     requestProfileSwitchRestore('beta')
     const first = $profileSwitchRestoreIntent.get()
     requestProfileSwitchRestore('gamma')
