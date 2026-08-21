@@ -531,6 +531,55 @@ export const $profileScope = computed([$showAllProfiles, $activeGatewayProfile],
 // $activeGatewayProfile → name, so $profileScope follows).
 let profileSelectionRevision = 0
 
+/**
+ * Activate the backend that owns an explicitly opened session without also
+ * restoring that profile's previously focused tab. A temporary restore intent
+ * preserves the profile being left while the fresh-draft bridge clears, then
+ * this explicit open becomes the target profile's final focus.
+ */
+export async function activateSessionOwner(connectionId: null | string, profile: string): Promise<boolean> {
+  const target = normalizeProfileKey(profile)
+  const connection = (connectionId ?? '').trim() || null
+  const activeConnection = $connection.get()?.connectionId?.trim() || null
+
+  const switching =
+    $showAllProfiles.get() ||
+    target !== normalizeProfileKey($activeGatewayProfile.get()) ||
+    (connection !== null && connection !== activeConnection)
+
+  if (!switching) {
+    return true
+  }
+
+  const revision = ++profileSelectionRevision
+
+  const restoreIntent =
+    getProfileSwitchBehavior() === 'restore_last_session' ? requestProfileSwitchRestore(target) : null
+
+  $showAllProfiles.set(false)
+  $newChatProfile.set(target)
+  requestFreshSession()
+
+  if (connection) {
+    await ensureGatewayAgent(connection, target)
+  } else {
+    await ensureGatewayProfile(target)
+  }
+
+  if (restoreIntent) {
+    clearProfileSwitchRestoreIntent(restoreIntent.sequence)
+  }
+
+  if (revision !== profileSelectionRevision) {
+    return false
+  }
+
+  return (
+    normalizeProfileKey($activeGatewayProfile.get()) === target &&
+    (!connection || ($connection.get()?.connectionId?.trim() || null) === connection)
+  )
+}
+
 export function selectProfile(name: string): void {
   const target = normalizeProfileKey(name)
 

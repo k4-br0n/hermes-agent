@@ -15,7 +15,20 @@
  *     the bridge has no session-window support.
  */
 import type { WorkspaceMode } from '@/contrib/types'
-import { $activeSessionId, $selectedStoredSessionId, markSessionRead } from '@/store/session'
+import { $activeConnectionId } from '@/store/connections'
+import {
+  $activeGatewayProfile,
+  $showAllProfiles,
+  activateSessionOwner,
+  normalizeProfileKey
+} from '@/store/profile'
+import {
+  $activeSessionId,
+  $selectedStoredSessionId,
+  $sessions,
+  markSessionRead,
+  sessionMatchesStoredId
+} from '@/store/session'
 import type { SessionProfileRoute } from '@/store/session-request-router'
 import {
   focusedSessionNeedsRoute,
@@ -86,6 +99,27 @@ export function openSession(
   workspaceScope: OpenSessionWorkspaceScope = { workspaceMode: 'sessions' }
 ): void {
   if (!storedSessionId) {
+    return
+  }
+
+  const session = $sessions.get().find(row => sessionMatchesStoredId(row, storedSessionId))
+  const ownerRoute = workspaceScope.ownerRoute
+  const ownerProfile = normalizeProfileKey(ownerRoute?.profile ?? session?.profile)
+  const ownerConnection = ownerRoute?.connectionId?.trim() || session?.connection_id?.trim() || null
+  const activeConnection = $activeConnectionId.get()
+
+  if (
+    (ownerRoute || session) &&
+    ($showAllProfiles.get() ||
+      ownerProfile !== normalizeProfileKey($activeGatewayProfile.get()) ||
+      (ownerConnection !== null && ownerConnection !== activeConnection))
+  ) {
+    void activateSessionOwner(ownerConnection, ownerProfile).then(activated => {
+      if (activated) {
+        openSession(storedSessionId, navigate, intent, workspaceScope)
+      }
+    })
+
     return
   }
 

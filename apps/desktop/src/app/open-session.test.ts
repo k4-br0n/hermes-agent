@@ -7,6 +7,22 @@ const setSessionTileWorkspaceScope = vi.fn()
 const openSessionInNewWindow = vi.fn()
 const canOpenSessionWindow = vi.fn(() => true)
 const workspaceIsPageGet = vi.fn(() => false)
+const activateSessionOwner = vi.fn<(connectionId: null | string, profile: string) => Promise<boolean>>(async () => true)
+const activeConnectionIdGet = vi.fn<() => null | string>(() => null)
+const activeProfileGet = vi.fn(() => 'default')
+const showAllProfilesGet = vi.fn(() => false)
+
+vi.mock('@/store/connections', () => ({
+  $activeConnectionId: { get: () => activeConnectionIdGet() }
+}))
+
+vi.mock('@/store/profile', () => ({
+  $activeGatewayProfile: { get: () => activeProfileGet() },
+  $showAllProfiles: { get: () => showAllProfilesGet() },
+  activateSessionOwner: (connectionId: null | string, profile: string) =>
+    activateSessionOwner(connectionId, profile),
+  normalizeProfileKey: (profile?: null | string) => profile?.trim() || 'default'
+}))
 
 vi.mock('@/store/session-states', () => ({
   focusedSessionNeedsRoute: (focused: 'main' | 'tile' | null, workspaceIsPage: boolean) =>
@@ -27,7 +43,7 @@ vi.mock('./routes', () => ({
   sessionRoute: (id: string) => `/c/${encodeURIComponent(id)}`
 }))
 
-import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
+import { $activeSessionId, $selectedStoredSessionId, $sessions } from '@/store/session'
 
 import { mainChatOccupied, openSession, openSessionIntentFromModifiers } from './open-session'
 
@@ -92,8 +108,18 @@ describe('openSession', () => {
     workspaceIsPageGet.mockReturnValue(false)
     reuseBlankDraftTile.mockReset()
     setSessionTileWorkspaceScope.mockReset()
+    activateSessionOwner.mockClear()
+    activateSessionOwner.mockImplementation(async (_connectionId, profile) => {
+      activeProfileGet.mockReturnValue(String(profile))
+
+      return true
+    })
+    activeConnectionIdGet.mockReturnValue(null)
+    activeProfileGet.mockReturnValue('default')
+    showAllProfilesGet.mockReturnValue(false)
     $activeSessionId.set(null)
     $selectedStoredSessionId.set(null)
+    $sessions.set([])
   })
 
   it('in-place focuses an existing tile and does not navigate', () => {
@@ -155,6 +181,18 @@ describe('openSession', () => {
     expect(setSessionTileWorkspaceScope).toHaveBeenCalledWith('s1', scope)
     expect(focusOpenSession).toHaveBeenCalledWith('s1', scope)
     expect(openSessionTile).toHaveBeenCalledWith('s1', 'center', undefined, undefined, scope)
+  })
+
+  it('activates a foreign session owner before creating its tab', async () => {
+    $sessions.set([{ id: 's1', profile: 'worker' } as never])
+    focusOpenSession.mockReturnValue(null)
+
+    openSession('s1', navigate, 'tab')
+
+    expect(activateSessionOwner).toHaveBeenCalledWith(null, 'worker')
+    expect(openSessionTile).not.toHaveBeenCalled()
+
+    await vi.waitFor(() => expect(openSessionTile).toHaveBeenCalledWith('s1', 'center'))
   })
 
   it('stack focuses a session that is already on screen', () => {
