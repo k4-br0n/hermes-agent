@@ -31,6 +31,7 @@ import {
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
+import { markSelectionRestore } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isHudWindow, isSecondaryWindow } from '@/store/windows'
@@ -118,8 +119,12 @@ export function useDesktopIntegrations({
       if (visibleStoredSessionId && sessionBelongsToProfile(sessions, visibleStoredSessionId, activeProfile)) {
         setRememberedSessionId(visibleStoredSessionId, activeProfile)
       }
+
+      if (routedSessionId && sessionBelongsToProfile(sessions, routedSessionId, activeProfile)) {
+        setRememberedRoute(locationPathname, activeProfile)
+      }
     })
-  }, [activeProfile, sessions, visibleStoredSessionId])
+  }, [activeProfile, locationPathname, routedSessionId, sessions, visibleStoredSessionId])
 
   // Explicit profile-switch restore is deliberately separate from the one-shot
   // cold-start `restoredRef` behavior below. It restores a session through the
@@ -196,10 +201,20 @@ export function useDesktopIntegrations({
         return
       }
 
+      const mainRoute = getRememberedRoute(activeProfile)
+      const mainSessionId = routeSessionId(mainRoute ?? '')
       const last = getRememberedSessionId(activeProfile)
       clearProfileSwitchRestoreIntent(intent.sequence)
 
-      if (last) {
+      if (mainRoute && mainSessionId) {
+        if (last && last !== mainSessionId) {
+          markSelectionRestore()
+        }
+
+        navigate(mainRoute, { replace: true })
+      }
+
+      if (last && last !== mainSessionId) {
         openSession(last, navigate, 'in-place')
       }
     })().catch(() => {
@@ -294,10 +309,27 @@ export function useDesktopIntegrations({
     if (routedSessionId && sessionBelongsToProfile(sessions, routedSessionId, activeProfile)) {
       setRememberedSessionId(routedSessionId, activeProfile)
       setRememberedRoute(locationPathname, activeProfile)
-    } else if (!routedSessionId && !isOverlayView(appViewForPath(locationPathname))) {
+    } else if (
+      !routedSessionId &&
+      !isOverlayView(appViewForPath(locationPathname)) &&
+      !(
+        profileSwitchBehavior === 'restore_last_session' &&
+        profileSwitchRestoreIntent &&
+        locationPathname === NEW_CHAT_ROUTE
+      )
+    ) {
       setRememberedRoute(locationPathname, activeProfile)
     }
-  }, [activeProfile, locationPathname, navigate, profileReady, routedSessionId, sessions])
+  }, [
+    activeProfile,
+    locationPathname,
+    navigate,
+    profileReady,
+    profileSwitchBehavior,
+    profileSwitchRestoreIntent,
+    routedSessionId,
+    sessions
+  ])
 
   useEffect(() => {
     if (!profileReady || !resumeExhaustedSessionId) {
