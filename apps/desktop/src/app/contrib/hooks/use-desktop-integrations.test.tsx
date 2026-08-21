@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { group } from '@/components/pane-shell/tree/model'
+import { $layoutTree, noteActiveTreeGroup } from '@/components/pane-shell/tree/store'
 import { $pendingConnectionId } from '@/store/connections'
 import { requestMcpInstallFromDeepLink } from '@/store/mcp-deeplink-install'
 import {
@@ -14,9 +16,11 @@ import {
   $sessions,
   _resetLegacyDiscardForTests,
   getRememberedRoute,
+  getRememberedSessionId,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
+import { $sessionTiles } from '@/store/session-states'
 import type * as WindowsStore from '@/store/windows'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -69,6 +73,9 @@ describe('useDesktopIntegrations', () => {
     _resetProfileSwitchBehaviorForTests()
     $pendingConnectionId.set(null)
     $sessions.set([])
+    $sessionTiles.set([])
+    $layoutTree.set(group(['workspace'], { active: 'workspace', id: 'grp-main' }))
+    noteActiveTreeGroup(null)
     openSessionMock.mockClear()
     vi.mocked(requestMcpInstallFromDeepLink).mockClear()
     navigate = vi.fn()
@@ -156,6 +163,28 @@ describe('useDesktopIntegrations', () => {
   }
 
   describe('explicit profile-switch restore', () => {
+    it('captures a focused profile tile even when its row is outside the loaded session page', () => {
+      const sessions = [session({ id: 'tab-1', profile: 'alpha' })]
+
+      $sessionTiles.set([{ dir: 'center', storedSessionId: 'tab-4' }])
+      $layoutTree.set(
+        group(['workspace', 'session-tile:tab-4'], { active: 'session-tile:tab-4', id: 'grp-main' })
+      )
+      noteActiveTreeGroup('grp-main')
+
+      render({
+        activeProfile: 'alpha',
+        profileReady: true,
+        sessions,
+        visibleStoredSessionId: 'tab-1'
+      })
+
+      setProfileSwitchBehavior('restore_last_session')
+      requestProfileSwitchRestore('beta')
+
+      expect(getRememberedSessionId('alpha')).toBe('tab-4')
+    })
+
     it('uses native in-place opening for the remembered visible tile, never route replacement', async () => {
       const sessions = [
         session({ id: 'tab-1', profile: 'alpha' }),

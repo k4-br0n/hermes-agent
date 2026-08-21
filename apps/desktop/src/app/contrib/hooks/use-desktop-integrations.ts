@@ -31,7 +31,7 @@ import {
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
-import { markSelectionRestore } from '@/store/session-states'
+import { $focusedStoredSessionId, $sessionTiles, markSelectionRestore } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isHudWindow, isSecondaryWindow } from '@/store/windows'
@@ -116,8 +116,17 @@ export function useDesktopIntegrations({
     }
 
     return registerProfileSwitchAnchorCapture(() => {
-      if (visibleStoredSessionId && sessionBelongsToProfile(sessions, visibleStoredSessionId, activeProfile)) {
-        setRememberedSessionId(visibleStoredSessionId, activeProfile)
+      const focusedStoredSessionId = $focusedStoredSessionId.get() ?? visibleStoredSessionId
+
+      const focusedIsCurrentProfileTile = $sessionTiles
+        .get()
+        .some(tile => tile.storedSessionId === focusedStoredSessionId)
+
+      if (
+        focusedStoredSessionId &&
+        (focusedIsCurrentProfileTile || sessionBelongsToProfile(sessions, focusedStoredSessionId, activeProfile))
+      ) {
+        setRememberedSessionId(focusedStoredSessionId, activeProfile)
       }
 
       if (routedSessionId && sessionBelongsToProfile(sessions, routedSessionId, activeProfile)) {
