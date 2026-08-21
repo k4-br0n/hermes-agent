@@ -1599,8 +1599,10 @@ export function mergeTreeZones(groupIds: string[], paneId: string | readonly str
 export function activateTreePane(groupId: string, paneId: string) {
   const tree = $layoutTree.get()
 
-  if (tree) {
+  if (tree && findGroupOfPane(tree, paneId)?.id === groupId) {
     commit(setActivePaneOp(tree, groupId, paneId))
+    ;(registry.getArea('panes').find(pane => pane.id === paneId)?.data as { onActivate?: () => void } | undefined)
+      ?.onActivate?.()
   }
 }
 

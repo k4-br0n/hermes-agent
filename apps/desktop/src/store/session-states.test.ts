@@ -23,6 +23,7 @@ import {
 const tile = (storedSessionId: string): SessionTile => ({ storedSessionId })
 const tilePane = (id: string) => `session-tile:${id}`
 
+
 describe('resetTileRuntimeBindings', () => {
   afterEach(() => {
     $sessionTiles.set([])
