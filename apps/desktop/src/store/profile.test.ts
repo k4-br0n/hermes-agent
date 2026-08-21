@@ -25,6 +25,7 @@ vi.mock('@/store/starmap', () => ({ resetStarmapGraph }))
 const {
   $activeGatewayProfile,
   $profiles,
+  activateSessionOwner,
   ensureGatewayProfile,
   invalidateProfileListFetches,
   prewarmProfileBackend,
@@ -106,6 +107,17 @@ describe('ensureGatewayProfile → $connection sync (#46651)', () => {
 
     expect(onActivated).toHaveBeenCalledTimes(1)
     expect(onActivated).toHaveBeenCalledWith(target)
+  })
+
+  it('activates an explicitly opened session owner without leaving a restore intent behind', async () => {
+    setProfileSwitchBehavior('restore_last_session')
+    getConnection.mockResolvedValue(remoteConn({ profile: 'worker' }))
+
+    const activated = await activateSessionOwner(null, 'worker')
+
+    expect(activated).toBe(true)
+    expect($activeGatewayProfile.get()).toBe('worker')
+    expect($profileSwitchRestoreIntent.get()).toBeNull()
   })
 
   it('serializes rapid profile activations so the latest request publishes last', async () => {
