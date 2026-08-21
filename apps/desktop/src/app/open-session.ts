@@ -14,7 +14,20 @@
  *   - `window` (⇧⌘-click) — pop into its own window; falls back to `tab` when
  *     the bridge has no session-window support.
  */
-import { $activeSessionId, $selectedStoredSessionId, markSessionRead } from '@/store/session'
+import { $activeConnectionId } from '@/store/connections'
+import {
+  $activeGatewayProfile,
+  $showAllProfiles,
+  activateSessionOwner,
+  normalizeProfileKey
+} from '@/store/profile'
+import {
+  $activeSessionId,
+  $selectedStoredSessionId,
+  $sessions,
+  markSessionRead,
+  sessionMatchesStoredId
+} from '@/store/session'
 import {
   focusedSessionNeedsRoute,
   focusOpenSession,
@@ -75,6 +88,26 @@ export function openSession(
   intent: OpenSessionIntent = 'in-place'
 ): void {
   if (!storedSessionId) {
+    return
+  }
+
+  const session = $sessions.get().find(row => sessionMatchesStoredId(row, storedSessionId))
+  const ownerProfile = normalizeProfileKey(session?.profile)
+  const ownerConnection = session?.connection_id?.trim() || null
+  const activeConnection = $activeConnectionId.get()
+
+  if (
+    session &&
+    ($showAllProfiles.get() ||
+      ownerProfile !== normalizeProfileKey($activeGatewayProfile.get()) ||
+      (ownerConnection !== null && ownerConnection !== activeConnection))
+  ) {
+    void activateSessionOwner(ownerConnection, ownerProfile).then(activated => {
+      if (activated) {
+        openSession(storedSessionId, navigate, intent)
+      }
+    })
+
     return
   }
 
