@@ -10,7 +10,13 @@ import {
   scopeProfileSwitchRestoreIntent,
   setProfileSwitchBehavior
 } from '@/store/profile-switch-behavior'
-import { $sessions, _resetLegacyDiscardForTests, setRememberedSessionId } from '@/store/session'
+import {
+  $sessions,
+  _resetLegacyDiscardForTests,
+  getRememberedRoute,
+  setRememberedRoute,
+  setRememberedSessionId
+} from '@/store/session'
 import type * as WindowsStore from '@/store/windows'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -177,6 +183,51 @@ describe('useDesktopIntegrations', () => {
 
       expect(openSessionMock).toHaveBeenCalledWith('tab-3', navigate, 'in-place')
       expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('restores the main session without replacing tab 1, then refocuses the remembered tile', async () => {
+      const sessions = [
+        session({ id: 'session-a', profile: 'alpha' }),
+        session({ id: 'session-x', profile: 'alpha' })
+      ]
+
+      const result = render({
+        activeProfile: 'alpha',
+        locationPathname: '/settings',
+        profileReady: true,
+        sessions,
+        visibleStoredSessionId: 'session-x'
+      })
+
+      setRememberedRoute('/session-a', 'alpha')
+      setRememberedSessionId('session-x', 'alpha')
+      let intentSequence = 0
+      act(() => {
+        setProfileSwitchBehavior('restore_last_session')
+        intentSequence = requestProfileSwitchRestore('alpha').sequence
+      })
+
+      result.rerender({
+        activeConnectionId: 'remote-a',
+        activeProfile: 'alpha',
+        locationPathname: '/',
+        profileReady: true,
+        refreshSessions: async () => true,
+        resumeExhaustedSessionId: null,
+        routedSessionId: null,
+        sessions,
+        visibleStoredSessionId: null
+      })
+
+      expect(getRememberedRoute('alpha')).toBe('/session-a')
+
+      await act(async () => {
+        scopeProfileSwitchRestoreIntent(intentSequence, 'remote-a')
+        await Promise.resolve()
+      })
+
+      expect(navigate).toHaveBeenCalledWith('/session-a', { replace: true })
+      expect(openSessionMock).toHaveBeenCalledWith('session-x', navigate, 'in-place')
     })
 
     it('waits for the target profile refresh before validating its remembered session', async () => {
