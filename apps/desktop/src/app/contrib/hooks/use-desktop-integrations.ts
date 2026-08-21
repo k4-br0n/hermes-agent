@@ -25,13 +25,13 @@ import {
 } from '@/store/profile-switch-behavior'
 import { openFolderAsProject } from '@/store/projects'
 import {
+  $selectedStoredSessionId,
   getRememberedRoute,
   getRememberedSessionId,
   sessionBelongsToProfile,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
-import { markSelectionRestore } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isHudWindow, isSecondaryWindow } from '@/store/windows'
@@ -114,6 +114,7 @@ export function useDesktopIntegrations({
   const profileSwitchBehavior = useStore($profileSwitchBehavior)
   const profileSwitchRestoreIntent = useStore($profileSwitchRestoreIntent)
   const pendingConnectionId = useStore($pendingConnectionId)
+  const selectedStoredSessionId = useStore($selectedStoredSessionId)
 
   // `selectProfile()` owns the explicit switch gesture, while this integration
   // owner has the router and the true focused tile. Capture synchronously before
@@ -222,7 +223,6 @@ export function useDesktopIntegrations({
             profile: activeProfile,
             tileSessionId: last
           })
-          markSelectionRestore()
         }
 
         navigate(mainRoute, { replace: true })
@@ -273,13 +273,20 @@ export function useDesktopIntegrations({
       return
     }
 
-    if (routedSessionId !== pending.mainSessionId) {
+    if (routedSessionId !== pending.mainSessionId || selectedStoredSessionId !== pending.mainSessionId) {
       return
     }
 
     setPendingProfileSwitchTileFocus(null)
     openSession(pending.tileSessionId, navigate, 'in-place')
-  }, [activeConnectionId, activeProfile, navigate, pendingProfileSwitchTileFocus, routedSessionId])
+  }, [
+    activeConnectionId,
+    activeProfile,
+    navigate,
+    pendingProfileSwitchTileFocus,
+    routedSessionId,
+    selectedStoredSessionId
+  ])
 
   // Wait until boot has adopted the primary profile, then restore that profile's
   // navigation exactly once. The same effect owns subsequent writes so the

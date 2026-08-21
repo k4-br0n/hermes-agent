@@ -11,6 +11,7 @@ import {
   setProfileSwitchBehavior
 } from '@/store/profile-switch-behavior'
 import {
+  $selectedStoredSessionId,
   $sessions,
   _resetLegacyDiscardForTests,
   getRememberedRoute,
@@ -68,6 +69,7 @@ describe('useDesktopIntegrations', () => {
     _resetLegacyDiscardForTests()
     _resetProfileSwitchBehaviorForTests()
     $pendingConnectionId.set(null)
+    $selectedStoredSessionId.set(null)
     $sessions.set([])
     openSessionMock.mockClear()
     vi.mocked(requestMcpInstallFromDeepLink).mockClear()
@@ -239,6 +241,13 @@ describe('useDesktopIntegrations', () => {
         routedSessionId: 'session-a',
         sessions,
         visibleStoredSessionId: 'session-a'
+      })
+
+      expect(openSessionMock).not.toHaveBeenCalled()
+
+      await act(async () => {
+        $selectedStoredSessionId.set('session-a')
+        await Promise.resolve()
       })
 
       expect(openSessionMock).toHaveBeenCalledWith('session-x', navigate, 'in-place')
