@@ -32,6 +32,7 @@ import {
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
+import { $focusedStoredSessionId } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isHudWindow, isSecondaryWindow } from '@/store/windows'
@@ -125,8 +126,13 @@ export function useDesktopIntegrations({
     }
 
     return registerProfileSwitchAnchorCapture(() => {
-      if (visibleStoredSessionId && sessionBelongsToProfile(sessions, visibleStoredSessionId, activeProfile)) {
-        setRememberedSessionId(visibleStoredSessionId, activeProfile)
+      // The switch gesture can land in the same frame as a tab click. Read the
+      // focus owner synchronously: the rendered prop may still name the tab
+      // from the previous React commit.
+      const focusedStoredSessionId = $focusedStoredSessionId.get() ?? visibleStoredSessionId
+
+      if (focusedStoredSessionId && sessionBelongsToProfile(sessions, focusedStoredSessionId, activeProfile)) {
+        setRememberedSessionId(focusedStoredSessionId, activeProfile)
       }
 
       if (routedSessionId && sessionBelongsToProfile(sessions, routedSessionId, activeProfile)) {

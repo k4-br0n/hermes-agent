@@ -15,6 +15,7 @@ import {
   $sessions,
   _resetLegacyDiscardForTests,
   getRememberedRoute,
+  getRememberedSessionId,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
@@ -29,12 +30,16 @@ import { useDesktopIntegrations } from './use-desktop-integrations'
 // Mutable HUD-window flag so the restore tests can flip the window kind the
 // hook believes it runs in. Default false keeps the pre-existing restore
 // coverage exercising the real main-window path.
-const { hudWindowMock, openSessionMock } = vi.hoisted(() => ({
+const { focusedStoredSessionIdMock, hudWindowMock, openSessionMock } = vi.hoisted(() => ({
+  focusedStoredSessionIdMock: vi.fn<() => null | string>(() => null),
   hudWindowMock: vi.fn(() => false),
   openSessionMock: vi.fn()
 }))
 
 vi.mock('@/app/open-session', () => ({ openSession: openSessionMock }))
+vi.mock('@/store/session-states', () => ({
+  $focusedStoredSessionId: { get: () => focusedStoredSessionIdMock() }
+}))
 
 vi.mock('@/store/mcp-deeplink-install', () => ({
   requestMcpInstallFromDeepLink: vi.fn()
@@ -72,6 +77,7 @@ describe('useDesktopIntegrations', () => {
     $selectedStoredSessionId.set(null)
     $sessions.set([])
     openSessionMock.mockClear()
+    focusedStoredSessionIdMock.mockReturnValue(null)
     vi.mocked(requestMcpInstallFromDeepLink).mockClear()
     navigate = vi.fn()
     // Every test starts as a main window; only the HUD describe flips this.
@@ -158,6 +164,26 @@ describe('useDesktopIntegrations', () => {
   }
 
   describe('explicit profile-switch restore', () => {
+    it('captures the synchronously focused tile instead of a stale rendered value', () => {
+      const sessions = [
+        session({ id: 'tab-1', profile: 'alpha' }),
+        session({ id: 'tab-4', profile: 'alpha' })
+      ]
+
+      render({
+        activeProfile: 'alpha',
+        profileReady: true,
+        sessions,
+        visibleStoredSessionId: 'tab-1'
+      })
+
+      focusedStoredSessionIdMock.mockReturnValue('tab-4')
+      setProfileSwitchBehavior('restore_last_session')
+      requestProfileSwitchRestore('beta')
+
+      expect(getRememberedSessionId('alpha')).toBe('tab-4')
+    })
+
     it('uses native in-place opening for the remembered visible tile, never route replacement', async () => {
       const sessions = [
         session({ id: 'tab-1', profile: 'alpha' }),
