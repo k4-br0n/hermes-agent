@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { group } from '@/components/pane-shell/tree/model'
+import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { $pendingConnectionId } from '@/store/connections'
 import { requestMcpInstallFromDeepLink } from '@/store/mcp-deeplink-install'
 import {
@@ -11,6 +13,7 @@ import {
   setProfileSwitchBehavior
 } from '@/store/profile-switch-behavior'
 import {
+  $selectedStoredSessionId,
   $sessions,
   _resetLegacyDiscardForTests,
   getRememberedRoute,
@@ -68,7 +71,9 @@ describe('useDesktopIntegrations', () => {
     _resetLegacyDiscardForTests()
     _resetProfileSwitchBehaviorForTests()
     $pendingConnectionId.set(null)
+    $selectedStoredSessionId.set(null)
     $sessions.set([])
+    $layoutTree.set(group(['workspace'], { active: 'workspace', id: 'grp-main' }))
     openSessionMock.mockClear()
     vi.mocked(requestMcpInstallFromDeepLink).mockClear()
     navigate = vi.fn()
@@ -155,6 +160,12 @@ describe('useDesktopIntegrations', () => {
     return intent
   }
 
+  function adoptSessionTile(storedSessionId: string) {
+    $layoutTree.set(
+      group(['workspace', `session-tile:${storedSessionId}`], { active: 'workspace', id: 'grp-main' })
+    )
+  }
+
   describe('explicit profile-switch restore', () => {
     it('uses native in-place opening for the remembered visible tile, never route replacement', async () => {
       const sessions = [
@@ -166,6 +177,9 @@ describe('useDesktopIntegrations', () => {
       ]
 
       $sessions.set(sessions)
+      $layoutTree.set(
+        group(['workspace', 'session-tile:tab-3'], { active: 'workspace', id: 'grp-main' })
+      )
 
       render({
         activeProfile: 'alpha',
@@ -227,6 +241,33 @@ describe('useDesktopIntegrations', () => {
       })
 
       expect(navigate).toHaveBeenCalledWith('/session-a', { replace: true })
+      expect(openSessionMock).not.toHaveBeenCalled()
+
+      result.rerender({
+        activeConnectionId: 'remote-a',
+        activeProfile: 'alpha',
+        locationPathname: '/session-a',
+        profileReady: true,
+        refreshSessions: async () => true,
+        resumeExhaustedSessionId: null,
+        routedSessionId: 'session-a',
+        sessions,
+        visibleStoredSessionId: 'session-a'
+      })
+
+      await act(async () => {
+        $selectedStoredSessionId.set('session-a')
+        await Promise.resolve()
+      })
+      expect(openSessionMock).not.toHaveBeenCalled()
+
+      await act(async () => {
+        $layoutTree.set(
+          group(['workspace', 'session-tile:session-x'], { active: 'workspace', id: 'grp-main' })
+        )
+        await Promise.resolve()
+      })
+
       expect(openSessionMock).toHaveBeenCalledWith('session-x', navigate, 'in-place')
     })
 
@@ -272,6 +313,7 @@ describe('useDesktopIntegrations', () => {
 
       $sessions.set(betaSessions)
       await act(async () => {
+        adoptSessionTile('beta-tab')
         refresh.resolve()
         await refresh.promise
       })
@@ -312,6 +354,7 @@ describe('useDesktopIntegrations', () => {
       expect(refreshSessions).not.toHaveBeenCalled()
 
       await act(async () => {
+        adoptSessionTile('beta-tab')
         scopeProfileSwitchRestoreIntent(intentSequence, 'remote-b')
         await Promise.resolve()
       })
@@ -328,6 +371,7 @@ describe('useDesktopIntegrations', () => {
         .mockResolvedValueOnce(false)
         .mockImplementationOnce(async () => {
           $sessions.set(betaSessions)
+          adoptSessionTile('beta-tab')
 
           return true
         })
@@ -367,6 +411,7 @@ describe('useDesktopIntegrations', () => {
       })
 
       await act(async () => {
+        adoptSessionTile('older-beta-session')
         setProfileSwitchBehavior('restore_last_session')
         requestScopedRestore('beta')
         await Promise.resolve()

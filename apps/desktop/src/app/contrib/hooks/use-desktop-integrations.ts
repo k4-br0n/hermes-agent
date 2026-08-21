@@ -1,9 +1,11 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { closeActiveTab } from '@/app/chat/close-tab'
 import { commandFocusedPreview } from '@/app/chat/right-rail/preview-nav'
 import { openSession } from '@/app/open-session'
+import { findGroupOfPane } from '@/components/pane-shell/tree/model'
+import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { resolveDeepLinkAction } from '@/lib/deeplink-routes'
 import { pathFromHermesDeepLink, resolveHermesOpenPath } from '@/lib/hermes-open-target'
 import { storedSessionIdForNotification } from '@/lib/session-ids'
@@ -25,13 +27,13 @@ import {
 } from '@/store/profile-switch-behavior'
 import { openFolderAsProject } from '@/store/projects'
 import {
+  $selectedStoredSessionId,
   getRememberedRoute,
   getRememberedSessionId,
   sessionBelongsToProfile,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
-import { markSelectionRestore } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isHudWindow, isSecondaryWindow } from '@/store/windows'
@@ -103,9 +105,19 @@ export function useDesktopIntegrations({
   }, [])
 
   const restoredRef = useRef(false)
+
+  const [pendingProfileSwitchTileFocus, setPendingProfileSwitchTileFocus] = useState<null | {
+    connectionId: null | string
+    mainSessionId: null | string
+    profile: string
+    tileSessionId: string
+  }>(null)
+
+  const layoutTree = useStore($layoutTree)
   const profileSwitchBehavior = useStore($profileSwitchBehavior)
   const profileSwitchRestoreIntent = useStore($profileSwitchRestoreIntent)
   const pendingConnectionId = useStore($pendingConnectionId)
+  const selectedStoredSessionId = useStore($selectedStoredSessionId)
 
   // `selectProfile()` owns the explicit switch gesture, while this integration
   // owner has the router and the true focused tile. Capture synchronously before
@@ -206,16 +218,19 @@ export function useDesktopIntegrations({
       const last = getRememberedSessionId(activeProfile)
       clearProfileSwitchRestoreIntent(intent.sequence)
 
-      if (mainRoute && mainSessionId) {
-        if (last && last !== mainSessionId) {
-          markSelectionRestore()
-        }
-
-        navigate(mainRoute, { replace: true })
+      if (last && last !== mainSessionId) {
+        setPendingProfileSwitchTileFocus({
+          connectionId: activeConnectionId,
+          mainSessionId,
+          profile: activeProfile,
+          tileSessionId: last
+        })
       }
 
-      if (last && last !== mainSessionId) {
-        openSession(last, navigate, 'in-place')
+      if (mainRoute && mainSessionId && routedSessionId !== mainSessionId) {
+        navigate(mainRoute, { replace: true })
+
+        return
       }
     })().catch(() => {
       if (!cancelled) {
@@ -237,7 +252,48 @@ export function useDesktopIntegrations({
     profileReady,
     profileSwitchBehavior,
     profileSwitchRestoreIntent,
-    refreshSessions
+    refreshSessions,
+    routedSessionId
+  ])
+
+  // A profile's persisted tile list changes before its pane mirror necessarily
+  // finishes adopting those tiles into the shared layout tree. Wait for the
+  // real pane (and, when needed, the restored primary selection) before claiming
+  // an in-place focus succeeded.
+  useEffect(() => {
+    const pending = pendingProfileSwitchTileFocus
+
+    if (!pending) {
+      return
+    }
+
+    if (pending.connectionId !== activeConnectionId || pending.profile !== activeProfile) {
+      setPendingProfileSwitchTileFocus(null)
+
+      return
+    }
+
+    if (
+      pending.mainSessionId &&
+      (routedSessionId !== pending.mainSessionId || selectedStoredSessionId !== pending.mainSessionId)
+    ) {
+      return
+    }
+
+    if (!layoutTree || !findGroupOfPane(layoutTree, `session-tile:${pending.tileSessionId}`)) {
+      return
+    }
+
+    setPendingProfileSwitchTileFocus(null)
+    openSession(pending.tileSessionId, navigate, 'in-place')
+  }, [
+    activeConnectionId,
+    activeProfile,
+    layoutTree,
+    navigate,
+    pendingProfileSwitchTileFocus,
+    routedSessionId,
+    selectedStoredSessionId
   ])
 
   // Wait until boot has adopted the primary profile, then restore that profile's
