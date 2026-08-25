@@ -32,6 +32,7 @@ import { $pinnedSessionIds } from '@/store/layout'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
 import { $activeGatewayProfile, $gatewaySwapTarget, $profiles } from '@/store/profile'
+import { $profileSwitchRestoreIntent } from '@/store/profile-switch-behavior'
 import {
   $connection,
   $contextSuggestions,
@@ -419,6 +420,8 @@ const ChatViewContent = memo(function ChatViewContent({
   const freshDraftReady = useStore($freshDraftReady)
   const gatewayState = useStore($gatewayState)
   const gatewaySwapTarget = useStore($gatewaySwapTarget)
+  const profileSwitchRestoreIntent = useStore($profileSwitchRestoreIntent)
+  const profileSwitchTarget = gatewaySwapTarget ?? profileSwitchRestoreIntent?.profile ?? null
   const gatewayOpen = gatewayState === 'open'
   const introPersonality = useStore($introPersonality)
   const introSeed = useStore($introSeed)
@@ -633,7 +636,7 @@ const ChatViewContent = memo(function ChatViewContent({
         onEdit={onEdit}
         onReload={onReload}
         onThreadMessagesChange={onThreadMessagesChange}
-        suppressMessages={routeSessionMismatch}
+        suppressMessages={routeSessionMismatch || profileSwitchTarget !== null}
       >
         <div
           className="relative min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
@@ -684,7 +687,7 @@ const ChatViewContent = memo(function ChatViewContent({
           {/* A session drag hovering an EDGE hands the visual to the zone
               target; the link overlay shows only for the center region. */}
           <ChatDropOverlay kind={overlayKind} />
-          <ChatSwapOverlay profile={gatewaySwapTarget} />
+          <ChatSwapOverlay profile={profileSwitchTarget} />
         </div>
         {/* Composer renders OUTSIDE the contain:[layout paint] wrapper above:
             that wrapper is a containing block for — and clips — position:fixed

@@ -531,12 +531,6 @@ export const $profileScope = computed([$showAllProfiles, $activeGatewayProfile],
 // $activeGatewayProfile → name, so $profileScope follows).
 let profileSelectionRevision = 0
 
-/**
- * Activate the backend that owns an explicitly opened session without also
- * restoring that profile's previously focused tab. A temporary restore intent
- * preserves the profile being left while the fresh-draft bridge clears, then
- * this explicit open becomes the target profile's final focus.
- */
 export async function activateSessionOwner(connectionId: null | string, profile: string): Promise<boolean> {
   const target = normalizeProfileKey(profile)
   const connection = (connectionId ?? '').trim() || null
@@ -553,9 +547,6 @@ export async function activateSessionOwner(connectionId: null | string, profile:
 
   const revision = ++profileSelectionRevision
 
-  const restoreIntent =
-    getProfileSwitchBehavior() === 'restore_last_session' ? requestProfileSwitchRestore(target) : null
-
   $showAllProfiles.set(false)
   $newChatProfile.set(target)
   requestFreshSession()
@@ -564,10 +555,6 @@ export async function activateSessionOwner(connectionId: null | string, profile:
     await ensureGatewayAgent(connection, target)
   } else {
     await ensureGatewayProfile(target)
-  }
-
-  if (restoreIntent) {
-    clearProfileSwitchRestoreIntent(restoreIntent.sequence)
   }
 
   if (revision !== profileSelectionRevision) {
@@ -605,10 +592,9 @@ export function selectProfile(name: string): void {
   const restoreIntent =
     getProfileSwitchBehavior() === 'restore_last_session' ? requestProfileSwitchRestore(target) : null
 
-  // Always clear the outgoing transcript before the target backend becomes
-  // active. Restore mode later focuses a validated session in-place; it never
-  // leaves the previous profile's chat visible while target data loads.
-  requestFreshSession()
+  if (!restoreIntent) {
+    requestFreshSession()
+  }
 
   // Route the switch on the source the user is currently browsing. Once the
   // activation publishes, scope restoration to that exact connection/profile;

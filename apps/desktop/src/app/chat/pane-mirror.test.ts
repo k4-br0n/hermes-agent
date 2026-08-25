@@ -1,12 +1,13 @@
 import { atom } from 'nanostores'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { group } from '@/components/pane-shell/tree/model'
-import { $layoutTree, activateTreePane, revealTreePane } from '@/components/pane-shell/tree/store'
+import { group, split } from '@/components/pane-shell/tree/model'
+import { $activeTreeGroup, $layoutTree, activateTreePane, revealTreePane } from '@/components/pane-shell/tree/store'
 import { contributesToWorkspace } from '@/components/pane-shell/workspace-scope'
 import { registry } from '@/contrib/registry'
+import { $profileSwitchRestoreIntent, requestProfileSwitchRestore } from '@/store/profile-switch-behavior'
 
-import { paneMirror } from './pane-mirror'
+import { focusRetainedSessionPane, paneMirror } from './pane-mirror'
 
 interface Tile {
   id: string
@@ -16,12 +17,15 @@ interface Tile {
 const cleanupSources: Array<ReturnType<typeof atom<Tile[]>>> = []
 let sequence = 0
 
-function setup(options: {
-  workspaceMode?: 'sessions' | 'bots' | ((tile: Tile) => 'sessions' | 'bots' | undefined)
-  workspaceOwnerKey?: string | ((tile: Tile) => string | undefined)
-}) {
+function setup(
+  options: {
+    workspaceMode?: 'sessions' | 'bots' | ((tile: Tile) => 'sessions' | 'bots' | undefined)
+    workspaceOwnerKey?: string | ((tile: Tile) => string | undefined)
+  },
+  prefixOverride?: string
+) {
   const source = atom<Tile[]>([])
-  const prefix = `pane-mirror-scope-${sequence++}`
+  const prefix = prefixOverride ?? `pane-mirror-scope-${sequence++}`
   cleanupSources.push(source)
 
   paneMirror<Tile>({
@@ -36,6 +40,7 @@ function setup(options: {
   })()
 
   return {
+    prefix,
     source,
     contribution: (id: string) => registry.getArea('panes').find(entry => entry.id === `${prefix}:${id}`)
   }
@@ -99,6 +104,36 @@ describe('paneMirror workspace scope', () => {
 
     expect(contributesToWorkspace(pane, 'sessions')).toBe(true)
     expect(contributesToWorkspace(pane, 'bots', 'bot:connection-a::default')).toBe(false)
+  })
+})
+
+describe('paneMirror transient reconciliation', () => {
+  it('retains the exact native pane tree while a profile activation temporarily removes its tiles', () => {
+    const mirror = setup({}, 'session-tile')
+    const tiles = ['B', 'C', 'X'].map(id => ({ id }))
+    const pane = (id: string) => `${mirror.prefix}:${id}`
+
+    mirror.source.set(tiles)
+    $layoutTree.set(
+      split(
+        'row',
+        [
+          group(['workspace', pane('B')], { active: pane('B'), id: 'main', tabStrip: 'always' }),
+          group([pane('C'), pane('X')], { active: pane('X'), id: 'side', minimized: true })
+        ],
+        [7, 3]
+      )
+    )
+    const before = structuredClone($layoutTree.get())
+
+    requestProfileSwitchRestore('beta')
+    mirror.source.set([])
+    mirror.source.set(tiles)
+    expect(focusRetainedSessionPane('X')).toBe(true)
+
+    expect($layoutTree.get()).toEqual(before)
+    expect($activeTreeGroup.get()).toBe('side')
+    $profileSwitchRestoreIntent.set(null)
   })
 })
 

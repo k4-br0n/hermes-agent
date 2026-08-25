@@ -11,10 +11,17 @@ import { deferred } from '../test/deferred'
 const ensureGatewayForProfile = vi.fn<(profile: string) => Promise<void>>(async () => undefined)
 const ensureGatewayForAgent = vi.fn(async () => undefined)
 const openGatewayForProfile = vi.fn(async (_profile: string) => undefined)
+const activeGatewayConnectionId = vi.fn<() => null | string>(() => null)
 const $gateway = atom<unknown>({ id: 'live-socket' })
 const resetStarmapGraph = vi.fn()
 
-vi.mock('@/store/gateway', () => ({ $gateway, ensureGatewayForAgent, ensureGatewayForProfile, openGatewayForProfile }))
+vi.mock('@/store/gateway', () => ({
+  $gateway,
+  activeGatewayConnectionId,
+  ensureGatewayForAgent,
+  ensureGatewayForProfile,
+  openGatewayForProfile
+}))
 vi.mock('@/hermes', () => ({
   getProfiles: vi.fn(async () => ({ profiles: [] })),
   setApiRequestProfile: vi.fn()
@@ -24,6 +31,7 @@ vi.mock('@/store/starmap', () => ({ resetStarmapGraph }))
 
 const {
   $activeGatewayProfile,
+  $freshSessionRequest,
   $profiles,
   activateSessionOwner,
   ensureGatewayProfile,
@@ -33,11 +41,8 @@ const {
   selectProfile
 } = await import('./profile')
 
-const {
-  $profileSwitchRestoreIntent,
-  _resetProfileSwitchBehaviorForTests,
-  setProfileSwitchBehavior
-} = await import('./profile-switch-behavior')
+const { $profileSwitchRestoreIntent, _resetProfileSwitchBehaviorForTests, setProfileSwitchBehavior } =
+  await import('./profile-switch-behavior')
 
 const { $connection } = await import('./session')
 const { invalidateProfileScopedQueries } = await import('@/lib/query-client')
@@ -66,6 +71,8 @@ beforeEach(() => {
   getConnection.mockReset()
   ensureGatewayForProfile.mockReset()
   ensureGatewayForProfile.mockResolvedValue(undefined)
+  activeGatewayConnectionId.mockReset()
+  activeGatewayConnectionId.mockReturnValue(null)
   openGatewayForProfile.mockClear()
   $gateway.set({ id: 'live-socket' })
   $activeGatewayProfile.set('default')
@@ -112,12 +119,18 @@ describe('ensureGatewayProfile → $connection sync (#46651)', () => {
   it('activates an explicitly opened session owner without leaving a restore intent behind', async () => {
     setProfileSwitchBehavior('restore_last_session')
     getConnection.mockResolvedValue(remoteConn({ profile: 'worker' }))
+    const activation = deferred<void>()
+    ensureGatewayForProfile.mockReturnValueOnce(activation.promise)
+    const before = $freshSessionRequest.get()
 
-    const activated = await activateSessionOwner(null, 'worker')
+    const activating = activateSessionOwner(null, 'worker')
 
-    expect(activated).toBe(true)
-    expect($activeGatewayProfile.get()).toBe('worker')
     expect($profileSwitchRestoreIntent.get()).toBeNull()
+    expect($freshSessionRequest.get()).toBe(before + 1)
+
+    activation.resolve()
+    expect(await activating).toBe(true)
+    expect($activeGatewayProfile.get()).toBe('worker')
   })
 
   it('serializes rapid profile activations so the latest request publishes last', async () => {
@@ -218,6 +231,25 @@ describe('ensureGatewayProfile → $connection sync (#46651)', () => {
     expect(getConnection).not.toHaveBeenCalled()
     expect(ensureGatewayForProfile).not.toHaveBeenCalled()
     expect($connection.get()?.mode).toBe('remote')
+  })
+})
+
+describe('restore-mode profile selection', () => {
+  it('never requests the destructive native fresh-session bridge', () => {
+    setProfileSwitchBehavior('restore_last_session')
+    const before = $freshSessionRequest.get()
+
+    selectProfile('beta')
+
+    expect($freshSessionRequest.get()).toBe(before)
+  })
+
+  it('keeps fresh-draft profile selection unchanged', () => {
+    const before = $freshSessionRequest.get()
+
+    selectProfile('beta')
+
+    expect($freshSessionRequest.get()).toBe(before + 1)
   })
 })
 

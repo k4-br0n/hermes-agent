@@ -9,12 +9,28 @@
 import type { ReadableAtom } from 'nanostores'
 import type { ReactElement, ReactNode, PointerEvent as ReactPointerEvent } from 'react'
 
-import { registerPaneCloser, removeTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
+import { findGroupOfPane } from '@/components/pane-shell/tree/model'
+import { $layoutTree, noteActiveTreeGroup, registerPaneCloser, removeTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
 import { registry } from '@/contrib/registry'
 import type { WorkspaceMode } from '@/contrib/types'
+import { $profileSwitchRestoreIntent } from '@/store/profile-switch-behavior'
 import type { TileDock } from '@/store/session-states'
 
 type WorkspaceValue<T, V> = V | ((tile: T) => V | undefined)
+
+export function focusRetainedSessionPane(storedSessionId: string): boolean {
+  const paneId = `session-tile:${storedSessionId}`
+  const tree = $layoutTree.get()
+  const group = tree ? findGroupOfPane(tree, paneId) : null
+
+  if (group && registry.getArea('panes').some(entry => entry.id === paneId)) {
+    noteActiveTreeGroup(group.id)
+
+    return true
+  }
+
+  return false
+}
 
 const workspaceValue = <T, V>(value: WorkspaceValue<T, V> | undefined, tile: T): V | undefined =>
   typeof value === 'function' ? (value as (tile: T) => V | undefined)(tile) : value
@@ -76,6 +92,7 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
   const sync = () => {
     const tiles = cfg.source.get()
     const wanted = new Set(tiles.map(cfg.key))
+    const retainSessionTree = cfg.prefix === 'session-tile' && $profileSwitchRestoreIntent.get() !== null
 
     for (const tile of tiles) {
       const key = cfg.key(tile)
@@ -134,7 +151,10 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
       if (!wanted.has(key)) {
         entry.dispose()
         registered.delete(key)
-        removeTreePane(paneId(key))
+
+        if (!retainSessionTree) {
+          removeTreePane(paneId(key))
+        }
       }
     }
 
@@ -142,9 +162,11 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
     // this session and that isn't wanted now — a profile switch reloads with the
     // other profile's tile panes still stacked in. (`registered` is empty after a
     // reload, so the loop above can't catch these.)
-    for (const id of treePanesWithPrefix(`${cfg.prefix}:`)) {
-      if (!wanted.has(id.slice(cfg.prefix.length + 1))) {
-        removeTreePane(id)
+    if (!retainSessionTree) {
+      for (const id of treePanesWithPrefix(`${cfg.prefix}:`)) {
+        if (!wanted.has(id.slice(cfg.prefix.length + 1))) {
+          removeTreePane(id)
+        }
       }
     }
   }

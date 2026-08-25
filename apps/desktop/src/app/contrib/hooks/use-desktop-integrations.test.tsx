@@ -11,6 +11,7 @@ import {
   setProfileSwitchBehavior
 } from '@/store/profile-switch-behavior'
 import {
+  $selectedStoredSessionId,
   $sessions,
   _resetLegacyDiscardForTests,
   getRememberedRoute,
@@ -69,6 +70,7 @@ describe('useDesktopIntegrations', () => {
     _resetProfileSwitchBehaviorForTests()
     $pendingConnectionId.set(null)
     $sessions.set([])
+    $selectedStoredSessionId.set(null)
     openSessionMock.mockClear()
     vi.mocked(requestMcpInstallFromDeepLink).mockClear()
     navigate = vi.fn()
@@ -157,11 +159,11 @@ describe('useDesktopIntegrations', () => {
   describe('explicit profile-switch restore', () => {
     it('uses native in-place opening for the remembered visible tile, never route replacement', async () => {
       const sessions = [
-        session({ id: 'tab-1', profile: 'alpha' }),
-        session({ id: 'tab-2', profile: 'alpha' }),
-        session({ id: 'tab-3', profile: 'alpha' }),
-        session({ id: 'tab-4', profile: 'alpha' }),
-        session({ id: 'tab-5', profile: 'alpha' })
+        session({ connection_id: 'remote-a', id: 'tab-1', profile: 'alpha' }),
+        session({ connection_id: 'remote-a', id: 'tab-2', profile: 'alpha' }),
+        session({ connection_id: 'remote-a', id: 'tab-3', profile: 'alpha' }),
+        session({ connection_id: 'remote-a', id: 'tab-4', profile: 'alpha' }),
+        session({ connection_id: 'remote-a', id: 'tab-5', profile: 'alpha' })
       ]
 
       $sessions.set(sessions)
@@ -187,9 +189,11 @@ describe('useDesktopIntegrations', () => {
 
     it('restores the main session without replacing tab 1, then refocuses the remembered tile', async () => {
       const sessions = [
-        session({ id: 'session-a', profile: 'alpha' }),
-        session({ id: 'session-x', profile: 'alpha' })
+        session({ connection_id: 'remote-a', id: 'session-a', profile: 'alpha' }),
+        session({ connection_id: 'remote-a', id: 'session-x', profile: 'alpha' })
       ]
+
+      $sessions.set(sessions)
 
       const result = render({
         activeProfile: 'alpha',
@@ -232,7 +236,7 @@ describe('useDesktopIntegrations', () => {
 
     it('waits for the target profile refresh before validating its remembered session', async () => {
       const alphaSessions = [session({ id: 'alpha-tab', profile: 'alpha' })]
-      const betaSessions = [session({ id: 'beta-tab', profile: 'beta' })]
+      const betaSessions = [session({ connection_id: 'remote-a', id: 'beta-tab', profile: 'beta' })]
       const refresh = deferred<void>()
       const refreshSessions = vi.fn(() => refresh.promise)
 
@@ -281,6 +285,7 @@ describe('useDesktopIntegrations', () => {
 
     it('binds restore to the target backend after a cross-backend profile activation', async () => {
       const refreshSessions = vi.fn(async () => true)
+      const betaSessions = [session({ connection_id: 'remote-b', id: 'beta-tab', profile: 'beta' })]
 
       const result = render({
         activeConnectionId: 'remote-a',
@@ -306,9 +311,10 @@ describe('useDesktopIntegrations', () => {
         refreshSessions,
         resumeExhaustedSessionId: null,
         routedSessionId: null,
-        sessions: [],
+        sessions: betaSessions,
         visibleStoredSessionId: null
       })
+      $sessions.set(betaSessions)
       expect(refreshSessions).not.toHaveBeenCalled()
 
       await act(async () => {
@@ -321,7 +327,7 @@ describe('useDesktopIntegrations', () => {
     })
 
     it('retries when another refresh supersedes the restore barrier', async () => {
-      const betaSessions = [session({ id: 'beta-tab', profile: 'beta' })]
+      const betaSessions = [session({ connection_id: 'remote-a', id: 'beta-tab', profile: 'beta' })]
 
       const refreshSessions = vi
         .fn<() => Promise<unknown>>()
@@ -353,17 +359,90 @@ describe('useDesktopIntegrations', () => {
       expect(openSessionMock).toHaveBeenCalledWith('beta-tab', navigate, 'in-place')
     })
 
-    it('restores a remembered session outside the recent-session page', async () => {
-      const refreshSessions = vi.fn(async () => true)
+    it.each([
+      ['uncommitted refresh', async () => false],
+      ['failed refresh', async () => Promise.reject(new Error('refresh failed'))],
+      ['unresolved owner', async () => true]
+    ])('clears an already-rooted restore after %s without opening a backend session', async (_case, refreshSessions) => {
+      const unresolved = [session({ id: 'older-beta-session', profile: 'beta' })]
 
-      setRememberedSessionId('older-beta-session', 'beta')
+      $sessions.set(unresolved)
       render({
         activeProfile: 'beta',
         locationPathname: '/',
         profileReady: true,
         refreshSessions,
-        sessions: [],
+        sessions: unresolved
+      })
+
+      await act(async () => {
+        setRememberedSessionId('older-beta-session', 'beta')
+        setProfileSwitchBehavior('restore_last_session')
+        requestScopedRestore('beta')
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect($profileSwitchRestoreIntent.get()).toBeNull()
+      expect(openSessionMock).not.toHaveBeenCalled()
+      expect(navigate).toHaveBeenCalledWith('/', { replace: true })
+    })
+
+    it('consumes a pending restore when the user navigates before refresh commits', async () => {
+      const refresh = deferred<boolean>()
+      const sessions = [session({ connection_id: 'remote-a', id: 'beta-tab', profile: 'beta' })]
+
+      const result = render({
+        activeProfile: 'beta',
+        locationPathname: '/',
+        profileReady: true,
+        refreshSessions: () => refresh.promise,
+        sessions
+      })
+
+      setRememberedSessionId('beta-tab', 'beta')
+      $sessions.set(sessions)
+      act(() => {
+        setProfileSwitchBehavior('restore_last_session')
+        requestScopedRestore('beta')
+      })
+
+      result.rerender({
+        activeConnectionId: 'remote-a',
+        activeProfile: 'beta',
+        locationPathname: '/skills',
+        profileReady: true,
+        refreshSessions: () => refresh.promise,
+        resumeExhaustedSessionId: null,
+        routedSessionId: null,
+        sessions,
         visibleStoredSessionId: null
+      })
+
+      expect($profileSwitchRestoreIntent.get()).toBeNull()
+
+      await act(async () => refresh.resolve(true))
+
+      expect(navigate).not.toHaveBeenCalled()
+      expect(openSessionMock).not.toHaveBeenCalled()
+    })
+
+    it('fails closed for ambiguous ownership but restores one unambiguous owner', async () => {
+      const ambiguous = [
+        session({ connection_id: 'remote-a', id: 'shared', profile: 'beta' }),
+        session({ _lineage_root_id: 'shared', connection_id: 'remote-b', id: 'tip-b', profile: 'beta' })
+      ]
+
+      setRememberedSessionId('shared', 'beta')
+      $sessions.set(ambiguous)
+
+      const result = render({
+        activeProfile: 'beta',
+        locationPathname: '/alpha-session',
+        profileReady: true,
+        refreshSessions: async () => true,
+        routedSessionId: 'alpha-session',
+        sessions: ambiguous
       })
 
       await act(async () => {
@@ -372,8 +451,29 @@ describe('useDesktopIntegrations', () => {
         await Promise.resolve()
       })
 
-      expect(openSessionMock).toHaveBeenCalledWith('older-beta-session', navigate, 'in-place')
-      expect(window.localStorage.getItem('hermes.desktop.lastSessionId.profile.beta')).toBe('older-beta-session')
+      expect(openSessionMock).not.toHaveBeenCalled()
+
+      const owned = [session({ connection_id: 'remote-a', id: 'shared', profile: 'beta' })]
+      $sessions.set(owned)
+      setRememberedSessionId('shared', 'beta')
+      result.rerender({
+        activeConnectionId: 'remote-a',
+        activeProfile: 'beta',
+        locationPathname: '/',
+        profileReady: true,
+        refreshSessions: async () => true,
+        resumeExhaustedSessionId: null,
+        routedSessionId: null,
+        sessions: owned,
+        visibleStoredSessionId: null
+      })
+
+      await act(async () => {
+        requestScopedRestore('beta')
+        await Promise.resolve()
+      })
+
+      expect(openSessionMock).toHaveBeenCalledWith('shared', navigate, 'in-place')
     })
 
     it('cancels an intent as soon as another connection is pending', () => {

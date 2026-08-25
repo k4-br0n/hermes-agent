@@ -129,6 +129,32 @@ export interface PluginFocusedSessionOwner {
   profile: string
 }
 
+export function resolveUniqueSessionOwner(
+  sessions: ReturnType<typeof $sessions.get>,
+  sessionId: string
+): PluginFocusedSessionOwner | null {
+  const hints = getSessionOwnerHints(sessionId)
+
+  if (hints.length !== 0) {
+    return hints.length === 1
+      ? { connectionId: hints[0].connectionId, profile: normalizeProfileKey(hints[0].profile) }
+      : null
+  }
+
+  const owners = new Map<string, PluginFocusedSessionOwner>()
+
+  for (const row of sessions.filter(session => sessionMatchesStoredId(session, sessionId))) {
+    const connectionId = String(row.connection_id || '').trim()
+    const profile = normalizeProfileKey(row.profile)
+
+    if (connectionId) {
+      owners.set(`${connectionId}::${profile}`, { connectionId, profile })
+    }
+  }
+
+  return owners.size === 1 ? [...owners.values()][0] : null
+}
+
 /**
  * Connection-qualified owner of the FOCUSED chat. The gateway-routing atom
  * (`$activeGatewayProfile`) answers "which backend is the live socket homed
@@ -144,41 +170,9 @@ const $focusedSessionOwner = computed(
   [$focusedStoredSessionId, $sessions, $activeGatewayProfile, $connection],
   (focused, sessions, activeProfile, connection): PluginFocusedSessionOwner | null => {
     const activeConnectionId = String(connection?.connectionId || (connection?.mode === 'local' ? 'local' : '')).trim()
+    const fallback = { connectionId: activeConnectionId, profile: normalizeProfileKey(activeProfile) }
 
-    const fallback = {
-      connectionId: activeConnectionId,
-      profile: normalizeProfileKey(activeProfile)
-    }
-
-    if (!focused) {
-      return fallback
-    }
-
-    const hints = getSessionOwnerHints(focused)
-
-    if (hints.length === 1) {
-      return {
-        connectionId: hints[0].connectionId,
-        profile: normalizeProfileKey(hints[0].profile)
-      }
-    }
-
-    if (hints.length > 1) {
-      return null
-    }
-
-    const owners = new Map<string, PluginFocusedSessionOwner>()
-
-    for (const row of sessions.filter(session => sessionMatchesStoredId(session, focused))) {
-      const connectionId = String(row.connection_id || '').trim()
-      const profile = normalizeProfileKey(row.profile)
-
-      if (connectionId) {
-        owners.set(`${connectionId}::${profile}`, { connectionId, profile })
-      }
-    }
-
-    return owners.size === 1 ? [...owners.values()][0] : null
+    return focused ? resolveUniqueSessionOwner(sessions, focused) : fallback
   }
 )
 

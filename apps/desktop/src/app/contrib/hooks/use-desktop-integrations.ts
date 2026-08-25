@@ -7,6 +7,7 @@ import { openSession } from '@/app/open-session'
 import { resolveDeepLinkAction } from '@/lib/deeplink-routes'
 import { pathFromHermesDeepLink, resolveHermesOpenPath } from '@/lib/hermes-open-target'
 import { storedSessionIdForNotification } from '@/lib/session-ids'
+import { resolveUniqueSessionOwner } from '@/sdk/index'
 import { $pendingConnectionId } from '@/store/connections'
 import { requestMcpInstallFromDeepLink } from '@/store/mcp-deeplink-install'
 import { startMcpHealthChecker, stopMcpHealthChecker } from '@/store/mcp-health'
@@ -24,22 +25,24 @@ import {
 } from '@/store/profile-switch-behavior'
 import { openFolderAsProject } from '@/store/projects'
 import {
+  $sessions,
   getRememberedRoute,
   getRememberedSessionId,
   sessionBelongsToProfile,
   setRememberedRoute,
   setRememberedSessionId
 } from '@/store/session'
-import { markSelectionRestore } from '@/store/session-states'
+import { $focusedStoredSessionId, markSelectionRestore } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isHudWindow, isSecondaryWindow } from '@/store/windows'
 import type { SessionInfo } from '@/types/hermes'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
+import { focusRetainedSessionPane } from '../../chat/pane-mirror'
 import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionRoute } from '../../routes'
 
-type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'id' | 'profile'>
+type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'connection_id' | 'id' | 'profile'>
 
 interface DesktopIntegrationsParams {
   activeConnectionId: null | string
@@ -103,16 +106,36 @@ export function useDesktopIntegrations({
   const profileSwitchBehavior = useStore($profileSwitchBehavior)
   const profileSwitchRestoreIntent = useStore($profileSwitchRestoreIntent)
   const pendingConnectionId = useStore($pendingConnectionId)
+  const focusedStoredSessionId = useStore($focusedStoredSessionId)
+  const navigationToken = `${locationPathname}\u0000${focusedStoredSessionId ?? ''}`
+  const navigationRef = useRef(navigationToken)
+  const restoringNavigationRef = useRef<null | { sequence: number; token: string }>(null)
 
+  // eslint-disable-next-line no-restricted-syntax -- exact navigation capture cancels only the in-flight restore
+  useEffect(() => {
+    const restoring = restoringNavigationRef.current
+
+    if (restoring && restoring.token !== navigationToken) {
+      clearProfileSwitchRestoreIntent(restoring.sequence)
+    }
+
+    navigationRef.current = navigationToken
+  }, [navigationToken])
 
   // Explicit profile-switch restore is deliberately separate from the one-shot
   // cold-start `restoredRef` behavior below. It restores a session through the
   // native openSession door, so an already-open tile is focused in place rather
   // than being routed into main, replaced, or reordered.
+  // eslint-disable-next-line no-restricted-syntax -- async restore owns a cancellation/capture ref, not mirrored app state
   useEffect(() => {
     const intent = profileSwitchRestoreIntent
 
-    if (!intent || isHudWindow() || isSecondaryWindow()) {
+    if (
+      !intent ||
+      $profileSwitchRestoreIntent.get()?.sequence !== intent.sequence ||
+      isHudWindow() ||
+      isSecondaryWindow()
+    ) {
       return
     }
 
@@ -143,6 +166,14 @@ export function useDesktopIntegrations({
     }
 
     let cancelled = false
+    restoringNavigationRef.current = { sequence: intent.sequence, token: navigationRef.current }
+
+    const recoverDraft = () => {
+      clearProfileSwitchRestoreIntent(intent.sequence)
+      setRememberedRoute(null, activeProfile)
+      setRememberedSessionId(null, activeProfile)
+      navigate(NEW_CHAT_ROUTE, { replace: true })
+    }
 
     // Use the existing scoped refresh as the completion barrier. It reports
     // whether this request actually committed; if another refresh supersedes
@@ -175,33 +206,57 @@ export function useDesktopIntegrations({
       }
 
       if (!committed) {
-        clearProfileSwitchRestoreIntent(intent.sequence)
+        recoverDraft()
 
         return
       }
 
+      const refreshed = $sessions.get()
       const mainRoute = getRememberedRoute(activeProfile)
       const mainSessionId = routeSessionId(mainRoute ?? '')
       const last = getRememberedSessionId(activeProfile)
+
+      const ownerMatchesTarget = (sessionId: string) => {
+        const owner = resolveUniqueSessionOwner(refreshed, sessionId)
+
+        return owner?.connectionId === activeConnectionId && owner.profile === activeProfile
+      }
+
+      const mainOwned = Boolean(mainSessionId && ownerMatchesTarget(mainSessionId))
+      const lastOwned = Boolean(last && ownerMatchesTarget(last))
+
+      if (mainSessionId && !mainOwned) {
+        setRememberedRoute(null, activeProfile)
+      }
+
+      if (last && !lastOwned) {
+        setRememberedSessionId(null, activeProfile)
+      }
+
+      if (!mainOwned && !lastOwned) {
+        recoverDraft()
+
+        return
+      }
+
       clearProfileSwitchRestoreIntent(intent.sequence)
 
-      if (mainRoute && mainSessionId) {
-        if (last && last !== mainSessionId) {
+      if (mainRoute && mainSessionId && mainOwned) {
+        if (lastOwned && last !== mainSessionId) {
           markSelectionRestore()
         }
 
         navigate(mainRoute, { replace: true })
       }
 
-      if (last && last !== mainSessionId) {
-        openSession(last, navigate, 'in-place')
+      if (last && lastOwned && last !== mainSessionId) {
+        if (!focusRetainedSessionPane(last)) {
+          openSession(last, navigate, 'in-place')
+        }
       }
     })().catch(() => {
       if (!cancelled) {
-        // The switch already entered the native fresh-draft surface. A failed
-        // refresh ends this attempt but preserves the remembered anchor for a
-        // later successful return.
-        clearProfileSwitchRestoreIntent(intent.sequence)
+        recoverDraft()
       }
     })
 

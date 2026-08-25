@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { assistantTextPart, type ChatMessage } from '@/lib/chat-messages'
+import { $profileSwitchRestoreIntent, requestProfileSwitchRestore } from '@/store/profile-switch-behavior'
 import {
   $activeSessionId,
   $awaitingResponse,
@@ -47,7 +48,14 @@ vi.mock('@/lib/model-options', () => ({
   requestModelOptions: vi.fn(async () => ({ models: [] }))
 }))
 vi.mock('./chat-drop-overlay', () => ({ ChatDropOverlay: () => null }))
-vi.mock('./chat-swap-overlay', () => ({ ChatSwapOverlay: () => null }))
+vi.mock('./chat-swap-overlay', async () => {
+  const React = await import('react')
+
+  return {
+    ChatSwapOverlay: ({ profile }: { profile: null | string }) =>
+      React.createElement('div', { 'data-profile': profile ?? '', 'data-testid': 'chat-swap-overlay' })
+  }
+})
 vi.mock('./composer', () => ({ ChatBar: () => null, ChatBarFallback: () => null }))
 vi.mock('./hooks/use-file-drop-zone', () => ({
   useFileDropZone: () => ({ dragKind: null, dropHandlers: {} })
@@ -103,6 +111,7 @@ describe('ChatView render isolation', () => {
     $messages.set([])
     $selectedStoredSessionId.set(null)
     $sessions.set([])
+    $profileSwitchRestoreIntent.set(null)
   })
 
   it('does not re-render chat history when an unrelated parent idle tick updates', () => {
@@ -160,5 +169,44 @@ describe('ChatView render isolation', () => {
     // memo(ChatView) with stable props must absorb the parent's idle tick —
     // the transcript (Thread) must not re-render. This is PR #38470's contract.
     expect(threadRenderCount.current).toBe(1)
+  })
+
+  it('synchronously suppresses the outgoing transcript for the full target-profile activation', async () => {
+    const props = {
+      gateway: null,
+      onAddContextRef: vi.fn(),
+      onAddUrl: vi.fn(),
+      onAttachDroppedItems: vi.fn(),
+      onAttachImageBlob: vi.fn(),
+      onCancel: vi.fn(),
+      onDeleteSelectedSession: vi.fn(),
+      onEdit: vi.fn(),
+      onPasteClipboardImage: vi.fn(),
+      onPickFiles: vi.fn(),
+      onPickFolders: vi.fn(),
+      onPickImages: vi.fn(),
+      onReload: vi.fn(),
+      onRemoveAttachment: vi.fn(),
+      onRetryResume: vi.fn(),
+      onSteer: vi.fn(),
+      onSubmit: vi.fn(),
+      onThreadMessagesChange: vi.fn(),
+      onToggleSelectedPin: vi.fn()
+    }
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/stored-1']}>
+          <ChatView {...props} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    expect(screen.getByTestId('chat-swap-overlay').getAttribute('data-profile')).toBe('')
+
+    act(() => requestProfileSwitchRestore('beta'))
+
+    expect(screen.getByTestId('chat-swap-overlay').getAttribute('data-profile')).toBe('beta')
   })
 })
